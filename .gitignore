@@ -1,0 +1,29 @@
+
+# Dependencies for latex
+libs
+
+# Database creds
+database.csv
+
+# other file types we don't want to track
+*.xlsx
+*.xlsm
+*.docx
+*.html
+*.png
+*.pptx
+
+# Windows thumbnail cache files
+Thumbs.db
+
+# TMB files
+*.o
+*.dll
+
+# R projects
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+*.Rdata
