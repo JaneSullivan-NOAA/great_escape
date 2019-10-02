@@ -21,6 +21,7 @@ if(!require("ROracle"))   install.packages("ROracle") # database access through 
 if(!require("knitr"))   install.packages("knitr") # r markdown
 # if(!require("forcats"))   install.packages("forcats") # releveling factors
 # if(!require("cowplot"))   install.packages("cowplot") # plot_grid and so much else
+# if(!require("ggridges"))   install.packages("ggridges") # length comps
 
 # Figure theme ----
 

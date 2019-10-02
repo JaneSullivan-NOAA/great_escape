@@ -54,14 +54,9 @@ dbGetQuery(zprod_channel, query) -> pot_bio
 write_csv(pot_bio, paste0("data/raw/pot_bio_", YEAR, ".csv"))
 
 read_csv(paste0("data/raw/pot_bio_", YEAR, ".csv"), guess_max = 50000) %>% 
-  mutate(treatment = derivedFactor("Control" = POT_TREATMENT_CODE == "99",
-                                   "4.00 in" = POT_TREATMENT_CODE == "00",
-                                   "3.75 in" = POT_TREATMENT_CODE == "01",
-                                   "3.50 in" = POT_TREATMENT_CODE == "02",
-                                   .default = NA),
-         length = LENGTH_MILLIMETERS / 10) %>% 
+  mutate(length = LENGTH_MILLIMETERS / 10) %>% 
   select(year = YEAR, effort_no = EFFORT_NO, specimen_no = SPECIMEN_NO, 
-         treatment, length, weight = WEIGHT_KILOGRAMS,
+         Treatment = POT_TREATMENT_CODE, length, weight = WEIGHT_KILOGRAMS,
          girth = GIRTH_MILLIMETERS) %>% 
   write_csv(paste0("data/pot_bio_", YEAR, ".csv"))
 
