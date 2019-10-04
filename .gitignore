@@ -10,7 +10,6 @@ database.csv
 *.xlsm
 *.docx
 *.html
-*.png
 *.pptx
 
 # Windows thumbnail cache files
