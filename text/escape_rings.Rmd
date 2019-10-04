@@ -6,14 +6,195 @@ output: word_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+YEAR <- 2019 # study year(s)
+source("../code/helper.r")
+
+bio <- read_csv(paste0("../data/pot_bio_", YEAR, ".csv")) %>% 
+  filter(!is.na(length)) %>% 
+  mutate(Treatment = derivedFactor("Control" = Treatment == "99",
+                                   "3.50 in" = Treatment == "02",
+                                   "3.75 in" = Treatment == "01",
+                                   "4.00 in" = Treatment == "00",
+                                   .default = NA,
+                                   .ordered = TRUE))
+
+# Effort data 
+effort <- read_csv(paste0("../data/pot_effort_", YEAR, ".csv"))
+
+
 ```
 
 # Background
 
 In 2018, the Alaska Department of Fish and Game (ADFG) reviewed a Board of Fish (BOF) proposal to create a live fish pot fishery for sablefish in Clarence Strait, Alaska. The primary concern among management biologists was the harvest of immature individuals, which comprise the "plate size" target in a live fish market. 
 
-A pot fishery for sablefish exists in British Columbia, where they implemented a minimum size limit of xx cm and use a 3.5" escape ring on sablefish pot gear to reduce incidental capture of sublegal fish. However, survey data suggest  sablefish mature at larger sizes in Alaska than British Columbia. In order to reduce catch rates of immature sablefish, the Board of Fish adopted 
+A pot fishery for sablefish exists in British Columbia, where they implemented a minimum size limit of xx cm and use a 3.5 in escape ring on sablefish pot gear to reduce incidental capture of sublegal fish (Haist and Hilborn 2000, Haist et al. 2004). DESCRIPTION OF BC ESCAPE RING STUDIES. 
 
-A fixed effect design was 
+Data collected in annual surveys conducted by ADFG suggest sablefish mature at larger sizes in Alaska than British Columbia. SUMMARY OF DATA. In order to reduce catch rates of immature sablefish, the Board of Fish adopted 4 in escape rings in the Clarence Sound sablefish pot fishery (REFERENCE). 
+
+An escape ring experiment was conducted in order to analyze the impact of escape rings on capture efficiency and gear selectivity. Optimal escape ring size provides the best compromise between low catches of immature sablefish while maintaining high CPUE of mature sablefish. Three alternative escape ring sizes - 3.5, 3.75, and 4 in - were evaluated during the ADFG annual sablefish tagging survey during May 2019.
+
+# Materials and methods
+
+The 2019 study followed a fixed effects design. A longline of `r distinct(effort, n_pots)` pots were set at `r n_distinct(bio$effort_no)` randomly selected stations in Chatham Strait during the ADFG sablefish tagging survey (REFERENCE). Each set was comprised of 4 treatments with 10 pots per treatment in a fixed alternating design (FIGURE). The 4 treatments included a control (no escape rings), two 3.5 in rings, two 3.75 in rings, and two 4 in rings.
+
+```{r data_summary}
+
+# Total lengths
+tot_fish <- bio %>% 
+  dplyr::summarise(n = n()) %>% 
+  pull()
+
+# Samples that don't have necessary treatment data associated with them. See GitHub issue #1
+discards <- bio %>% 
+  filter(is.na(Treatment)) %>% 
+  group_by(discard_status) %>% 
+  dplyr::summarise(n = n()) %>% 
+  dplyr::rename(`Discard status` = discard_status) 
+
+tot_discards <- bio %>% 
+  filter(is.na(Treatment)) %>% 
+  dplyr::summarise(n = n()) %>% 
+  mutate(`Discard status` = "Total")
+
+discards_tbl <- bind_rows(discards, tot_discards) %>% 
+  mutate(n = prettyNum(n, big.mark = ","))
+
+bio %>% 
+  dplyr::summarise(n = n())
+
+# Remove these fish from analysis
+bio <- bio %>% filter(!is.na(Treatment))
+
+# Final sample sizes for fork lengths (cm)
+len_n <- bio %>% 
+  group_by(Treatment) %>% 
+  dplyr::summarise(len_n = n()) 
+
+len_totn <- bio %>% 
+              dplyr::summarise(len_n = n()) %>% 
+              mutate(Treatment = "Total")
+
+len_n <- len_n %>% 
+  bind_rows(treatment_totn)
+
+# Girths (mm)
+girths_n <- bio %>% 
+  filter(!is.na(girth)) %>% 
+  group_by(Treatment) %>% 
+  dplyr::summarise(girth_n = n()) %>% 
+  bind_rows(bio %>% 
+              filter(!is.na(girth)) %>% 
+              dplyr::summarise(girth_n = n()) %>%
+              mutate(Treatment = "Total"))
+
+# Weights (mm)
+wt_n <- bio %>% 
+  filter(!is.na(weight)) %>% 
+  group_by(Treatment) %>% 
+  dplyr::summarise(wt_n = n()) %>% 
+  bind_rows(bio %>% 
+              filter(!is.na(weight)) %>% 
+              dplyr::summarise(wt_n = n()) %>%
+              mutate(Treatment = "Total"))
+
+# Stuck in rings
+stuck_n <- bio %>% 
+  filter(grepl(c("Stuck|stuck"), comments)) %>% 
+  group_by(Treatment) %>% 
+  dplyr::summarise(stuck_n = n()) %>% 
+  bind_rows(bio %>% 
+              filter(grepl(c("Stuck|stuck"), comments)) %>% 
+              dplyr::summarise(stuck_n = n()) %>%
+              mutate(Treatment = "Total"))
+
+# Final sample size table  
+n_tbl <- left_join(len_n, girths_n) %>% 
+  left_join(wt_n) %>% 
+  left_join(stuck_n)
+
+# Format
+n_tbl[c(2,3,4,5)] <- lapply(n_tbl[c(2,3,4,5)], prettyNum, big.mark=",")
+names(n_tbl) <- c("Treatment", "Fork length", "Girth", "Weight", "Stuck in escape ring")
+
+```
+
+There were `r prettyNum(pull(tot_discards, n), big.mark = ',')` fish that were lost, not tagged properly,  already tagged from another agency, dead or unmarketable due to sandflea bites or other damage, and were subsequently excluded from the remainder of the analysis. This reflected `r formatC(round(pull(tot_discards, n) / tot_fish * 100, 2))` of the total fish captured on the survey (`r prettyNum(tot_fish, big.mark = ",")`), resulting in a total of `r prettyNum(pull(len_totn, len_n), big.mark = ",")` fish lengths available for analysis (T). In addition to lengths, a subset of sablefish girths and weights were collected using a stratified random sampling design during the tagging survey. The fish girth, or circumference, was measured anterior to the dorsal fin and posterior to the pectoral and pelvic fins at fish's the thickest point and recorded to the nearest mm. Additionally, fish stuck in the esacape rings were documented and measured for girth and weight when possible.
+
+```{r length_bins}
+
+# Same length bin structure used by Feds)
+bio <- bio %>% 
+  filter(!c(length < 40)) %>% 
+  mutate(length2 = ifelse(length < 41, 41,
+                          ifelse(length > 99, 99, length)),
+         length_bin = cut(length2, breaks = seq(39.9, 99.9, 2),
+                          labels = paste(seq(41, 99, 2)))) %>% 
+  select(-length2)
+
+```
+
+
+## Theoretical length-based selectivity curves
+
+```{r theoretical_selectivity}
+
+grth <- bio %>% filter(!is.na(girth))
+
+plot
+
+ggplot(grth, aes(x = length, y = girth, col = Treatment)) +
+  geom_point() +
+  facet_wrap(~Treatment) +
+  geom_smooth(method = "lm")
+
+# There appears to be a couple girth outliers
+ggplot(grth, aes(x = length_bin, y = log(girth), fill = Treatment)) +
+  geom_boxplot() +
+  facet_wrap(~Treatment)
+
+fit_com <- glm(log(girth) ~ log(length), family = gaussian(link = "identity"), data = grth)
+fit_sep <- glm(log(girth) ~ log(length) * Treatment, family = gaussian(link = "identity"), data = grth)
+summary(fit_com)
+summary(fit_sep)
+AIC(fit_com, fit_sep)
+
+# Get goodness of fit R2
+1 - (fit_sep$deviance / fit_sep$null.deviance)
+1 - (fit_com$deviance / fit_com$null.deviance)
+
+# Remove the three apparent outliers
+cooks <- cooks.distance(fit_sep)
+plot(cooks, pch="*", cex=2, main="Influential Obs by Cooks distance")  # plot cook's distance
+abline(h = 15*mean(cooks, na.rm=T), col="red")  # add cutoff line
+text(x=1:length(cooks)+1, y=cooks, 
+     labels=ifelse(cooks>15*mean(cooks, na.rm=T),
+                   names(cooks),""), col="red")  # add labels
+not_influential <- as.numeric(names(cooks)[(cooks < 15*mean(cooks, na.rm=T))])  # influential row numbers
+grth <- grth[not_influential, ]
+
+plot(p)
+
+ggdensity(grth$girth)
+ggqqplot(log(grth$girth))
+shapiro.test(log(grth$girth))
+ggdensity(grth$length) 
+ggqqplot(grth$length)
+shapiro.test(grth$length)
+fit <- lm(girth ~ length, data = bio)
+
+head(bio)
+
+```
+
+A set of theoretical length-based selectivity curves were developed using the a girth-length relationship and the length composition data collected during the survey experiment. Seasonal changes in the girth-length and weight-length relationship between the timing of the survey (May) and fishery (Fall) were evaluated by comparing linear regressions during these time periods.
+
+## Estimating selectivity
+We used a modified form of the SELECT (Share Each LEngth-classe's Catch Total) method to estimate length-based selectivity curves for sablefish pot gear. The SELECT method uses fishing effort and length data from catch to compare different fishing gears fished at the same time.
+
+# Results
+
+
 
 

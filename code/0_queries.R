@@ -41,7 +41,7 @@ query <-
   paste0(
 " select  year, effort_no, specimen_no,
           length_millimeters, weight_kilograms, girth_millimeters,
-          pot_treatment_code, pot_treatment
+          pot_treatment_code, pot_treatment, discard_status, comments
                    
   from    out_g_bio_effort_age_sex_size
 
@@ -57,7 +57,7 @@ read_csv(paste0("data/raw/pot_bio_", YEAR, ".csv"), guess_max = 50000) %>%
   mutate(length = LENGTH_MILLIMETERS / 10) %>% 
   select(year = YEAR, effort_no = EFFORT_NO, specimen_no = SPECIMEN_NO, 
          Treatment = POT_TREATMENT_CODE, length, weight = WEIGHT_KILOGRAMS,
-         girth = GIRTH_MILLIMETERS) %>% 
+         girth = GIRTH_MILLIMETERS, discard_status = DISCARD_STATUS, comments = COMMENTS) %>% 
   write_csv(paste0("data/pot_bio_", YEAR, ".csv"))
 
 # Pot effort data ----
