@@ -24,6 +24,7 @@ if(!require("knitr"))   install.packages("knitr") # r markdown
 # if(!require("ggridges"))   install.packages("ggridges") # length comps
 if(!require("captioner"))   install.packages("captioner") #numbering, ordering, & creating captions for tables and figures
 if(!require("ggpubr"))   install.packages("ggpubr") # QQ plots
+if(!require("ciTools"))   install.packages("ciTools") # GLM prediction intervals
 
 # Figure theme ----
 
