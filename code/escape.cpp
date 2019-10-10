@@ -52,8 +52,8 @@ Type objective_function<Type>::operator() ()
   Type fixed_beta90 = Type(2) * beta50 - beta10;  // fixed beta90 for 2 parameter logistic curve
   Type alpha = beta50;  // use to define the assymetrical arms of the 3 parameter logistic curve
   
-  // Selectivity matrix p = probability that a fish of length i in set j that is
-  // caught in an escape-ring pot will be retained in the pot
+  // Selectivity matrix (slx): probability that a fish of length i in set j that
+  // is caught in an escape-ring pot will be retained in the pot
   matrix<Type> slx(nlen, nset);
   slx.setZero();
   
@@ -83,7 +83,7 @@ Type objective_function<Type>::operator() ()
     }
   }
   
-  // Ratio of the number of control pots to the number of escape-ring pots in set j
+  // Ratio (r) of the number of control pots to the number of escape-ring pots in set j:
   vector<Type> r(nset);
   r.setZero();
 
@@ -91,8 +91,8 @@ Type objective_function<Type>::operator() ()
     r(j) = npot_ctl(j) / npot_exp(j);
   }
 
-  // // Given that a fish is caught and retained in one of the set j pots, the
-  // // probability that it is an escape ring pot is phi:
+  // Given that a fish is caught and retained in one of the set j pots, the
+  // probability that it is an escape ring pot is phi:
   matrix<Type> phi(nlen,nset);
   phi.setZero();
 
