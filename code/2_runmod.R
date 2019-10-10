@@ -75,7 +75,8 @@ ggplot(sum_df, aes(x = length_bin, y = p,
 
 TREATMENT <- "4.00 in"
 trt <- filter(sum_df, Treatment == TREATMENT)
-trt <- mutate(trt, Effort_no = factor(effort_no))
+# trt <- mutate(trt, Effort_no = factor(effort_no))
+trt <- mutate(trt, effort_no = 1)
 
 # mod <- glm(p ~ length_bin, family = "binomial", weights = tot_n, data = trt)
 # mod <- glmer(p ~ length_bin + (1 | effort_no), family = "binomial", weights = tot_n, data = trt)
@@ -85,37 +86,76 @@ trt <- mutate(trt, Effort_no = factor(effort_no))
 #   mutate(effort_no = 6)
 # pred_df$pred <- predict(mod, pred_df, type = "response")
 
+# Data, parameter, and map for TMB ----
 
-# 2. Fit model
-# Compile and link
-compile("code//escape.cpp")
-dyn.load(dynlib("code//escape"))
-compile("code//mod.cpp")
-dyn.load(dynlib("code//escape"))
+data <- list(model = 1, # model switch
+             nset = length(unique(trt$effort_no)), # number of sets
+             nlen = length(unique(trt$length_bin)), # number of length bins
+             len = unique(trt$length_bin), # vector of lengths
+             npot_ctl = rep(4, length(unique(trt$effort_no))), # vector of number of control pots in each set
+             npot_exp = rep(4, length(unique(trt$effort_no))), # vector of number of experimental pots in each set
+             ctl_dat = matrix(trt$ctl_n, ncol = length(unique(trt$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
+             exp_dat = matrix(trt$exp_n, ncol = length(unique(trt$effort_no)))) # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
+
+# Starting values from Table N.4 Model 1.3 and 1.2 in Haist et al. 2004
+parameters <- list(dummy = 0,
+                   log_s50 = log(64),
+                   log_lslx = log(64-50),
+                   log_uslx = log(69-64),
+                   log_delta = log(0.92),
+                   nu = rep(0, length(unique(trt$effort_no))))
+
+# Troubleshooting map
+map <- list(log_s50 = factor(NA),
+            log_lslx = factor(NA),
+            log_uslx = factor(NA),
+            log_delta = factor(NA),
+            nu = rep(factor(NA), length(unique(trt$effort_no))))
+
+# Compile TMB code and fit model ----
+
+setwd("~/great_escape/code")
 
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
-data <- list(len = trt$length_bin, p = trt$p, exp = trt$exp_n, tot = trt$tot_n)
-parameters <- list(l50 = 45, k = 0.2, dummy = 0)
+map <- list(dummy = factor(NA),
+            # log_s50 = factor(NA),
+            # log_lslx = factor(NA),
+            # log_uslx = factor(NA),
+            # log_delta = factor(NA),
+            nu = rep(factor(NA), length(unique(trt$effort_no))))
 
-# Model 1 ----
+lowbnd= c(log(45), # log_s50
+          log(2), # log_lslx
+          log(2), # log_uslx
+          log(0.5) # log_delta
+          ) 
+
+uppbnd= c(log(70), # log_s50
+          log(25), # log_lslx
+          log(25), # log_uslx
+          log(1.5)  # log_delta
+          )  
+
 data$model <- 1
-map <- list(dummy = factor(NA), tau = factor(NA))
-model <- MakeADFun(data, parameters, map=map, 
-                   DLL="HW2_jysullivan",silent=T,
-                   hessian=T)
+model <- MakeADFun(data, parameters, map = map, 
+                   DLL = "escape", silent = FALSE,
+                   hessian = TRUE)
 # checking for minimization
 xx <- model$fn(model$env$last.par)
 print(model$report())
 fit <- nlminb(model$par, model$fn, model$gr, 
-              control=list(eval.max=1000000,iter.max=100000))
+              # control=list(eval.max=1000000,iter.max=100000),
+              control=list(rel.tol=1e-12,
+                           eval.max=100000,iter.max=10000),
+              lower=lowbnd,upper=uppbnd)
 best <- model$env$last.par.best
 print(best)
 rep <- sdreport(model)
 print(rep)
 cat(model$report()$pfit,"\n")
-res <- data.frame(p = model$report()$p,
+res <- data.frame(p = exp(model$report()$log_beta50),
            p_est = rep(as.list(rep, what = "Estimate")$`p`, length(model$report()$p)),
            p_std = rep(as.list(rep, what = "Std")$`p`, length(model$report()$p)))
 
@@ -136,6 +176,7 @@ map <- list(dummy = factor(NA))
 model <- MakeADFun(data, parameters, map=map, 
                    DLL="HW2_jysullivan",silent=T,
                    hessian=T)
+
 # checking for minimization
 xx <- model$fn(model$env$last.par)
 print(model$report())
@@ -151,7 +192,7 @@ uppbnd= c(1, # p
 
 fit <- nlminb(model$par, model$fn, model$gr, 
               control=list(rel.tol=1e-12,
-                           eval.max=100000,iter.max=10000),
+                           eval.max=100000,iter.max=100000),
               lower=lowbnd,upper=uppbnd)
 
 best <- model$env$last.par.best

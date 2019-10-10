@@ -25,12 +25,15 @@ Type objective_function<Type>::operator() ()
   
   // PARAMETER SECTION ----
   
+  // Troubleshoot model
+  PARAMETER(dummy);  
+  
   // lengths where there is a 10, 50 and 90 percent probability that a fish will
   // be retained in the escape-ring traps
-  PARAMETER(log_beta10);
-  PARAMETER(log_beta50);
-  PARAMETER(log_beta90);
-  
+  PARAMETER(log_s50);
+  PARAMETER(log_lslx); // = exp(sel50 - sel10)
+  PARAMETER(log_uslx); // = exp(sel90 - sel50)
+
   // relative probability of entering a control pot (account for possible
   // difference in the degree to which fish are attracted to escape-ring and to
   // control trap)
@@ -39,43 +42,43 @@ Type objective_function<Type>::operator() ()
   // Random effects for set [nset]
   PARAMETER_VECTOR(nu);
   
-  // Troubleshoot model
-  PARAMETER(dummy);
-
-  // MODEL -----
-  
-  Type beta10 = exp(log_beta10);
-  Type beta50 = exp(log_beta50);
-  Type beta90 = exp(log_beta90);
+  Type s50 = exp(log_s50);
+  Type s10 = s50 - exp(log_lslx);
+  Type s90 = s50 + exp(log_uslx);
   Type delta = exp(log_delta);
   
-  Type fixed_beta90 = Type(2) * beta50 - beta10;  // fixed beta90 for 2 parameter logistic curve
-  Type alpha = beta50;  // use to define the assymetrical arms of the 3 parameter logistic curve
+  // MODEL -----
   
   // Selectivity matrix (slx): probability that a fish of length i in set j that
   // is caught in an escape-ring pot will be retained in the pot
   matrix<Type> slx(nlen, nset);
   slx.setZero();
   
+  Type delta_slx = 0;
+  
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
-
-      switch(model) {
       
+      switch(model) {
+
       case 1 : // Logistic with 2 parameters
-        if(len(i) <= alpha) {
-          slx(i,j) = Type(1) / (Type(1) + exp( (Type(-2) * log(Type(3)) * len(i) - beta50 + nu(j)) / (beta50 - beta10) ));
-        }  else {
-          slx(i,j) = Type(1) / (Type(1) + exp( (Type(-2) * log(Type(3)) * len(i) - beta50 + nu(j)) / (fixed_beta90 - beta50) ));
-        }
-        break;
+
+        if (len(i) <= s50) 
+          delta_slx = s50 - s10;
+        else 
+          delta_slx = (Type(2) * s50 - s10) - s50;
+        
+          slx(i,j) = Type(1) / (Type(1) + exp( (Type(-2) * log(Type(3)) * len(i) - s50 + nu(j)) / delta_slx ));
 
       case 2 : // Logistic with 3 parameters
-        if(len(i) <= alpha) {
-          slx(i,j) = Type(1) / (Type(1) + exp( (Type(-2) * log(Type(3)) * len(i) - beta50 + nu(j)) / (beta50 - beta10) ));
-        }  else {
-          slx(i,j) = Type(1) / (Type(1) + exp( (Type(-2) * log(Type(3)) * len(i) - beta50 + nu(j)) / (beta90 - beta50) ));
-        }
+        
+        if (len(i) <= s50) 
+          delta_slx = s50 - s10;
+        else 
+          delta_slx = s90 - s50;
+        
+        slx(i,j) = Type(1) / (Type(1) + exp( (Type(-2) * log(Type(3)) * len(i) - s50 + nu(j)) / delta_slx ));
+        
       break;
 
       // case 3 : // Dome-shaped
@@ -101,7 +104,8 @@ Type objective_function<Type>::operator() ()
       phi(i,j) = slx(i,j) / (slx(i,j) + delta * r(j));
     }
   }
-
+  // std::cout << phi << "\n phi";
+  
   // OBJECTIVE FUNCTION -----
 
   Type nll = 0;
@@ -123,9 +127,9 @@ Type objective_function<Type>::operator() ()
     
   // REPORT SECTION -----
   
-  ADREPORT(beta10);
-  ADREPORT(beta50);
-  ADREPORT(beta90);
+  ADREPORT(s10);
+  ADREPORT(s50);
+  ADREPORT(s90);
   ADREPORT(slx);
   ADREPORT(phi);
   
