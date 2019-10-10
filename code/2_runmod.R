@@ -3,12 +3,12 @@
 # jane.sullivan1@alaska.gov
 # Last updated 2019-10-07
 
-source("helper.r")
+source("code/helper.r")
 library(TMB)
 library(cowplot)
 
 # Data ----
-
+YEAR <- 2019
 bio <- read_csv(paste0("data/pot_bio_", YEAR, ".csv")) %>% 
   filter(!is.na(length)) %>% 
   mutate(Treatment = derivedFactor("Control" = Treatment == "99",
@@ -42,7 +42,7 @@ bio <- bio %>%
 # Reorganize data and get number of fish caught in experimental pots / control
 # pots for each length bin
 sum_df <- bio %>% 
-  group_by(Treatment, effort_no, Length_bin, .drop=FALSE) %>% 
+  group_by(Treatment, Length_bin, .drop=FALSE) %>%  #effort_no,
   dplyr::summarise(n = n()) %>% 
   ungroup()
 
@@ -51,7 +51,7 @@ sum_df <- sum_df %>%
   dplyr::rename(exp_n = n) %>% 
   left_join(sum_df %>% 
               filter(Treatment == "Control") %>% 
-              select(Length_bin, effort_no, ctl_n = n)) %>% 
+              select(Length_bin,  ctl_n = n)) %>% #effort_no,
   mutate(tot_n = exp_n + ctl_n,
          # proportion retained in experimental out of control
          p = exp_n / tot_n,
@@ -66,6 +66,7 @@ ggplot(sum_df, aes(x = length_bin, y = p,
                    group =  Treatment, col = Treatment)) +
   geom_point() +
   geom_line()
+
 ggplot(sum_df, aes(x = length_bin, y = p,
                    group =  factor(effort_no), col = factor(effort_no))) +
   geom_point() +
@@ -76,23 +77,27 @@ TREATMENT <- "4.00 in"
 trt <- filter(sum_df, Treatment == TREATMENT)
 trt <- mutate(trt, Effort_no = factor(effort_no))
 
-mod <- glm(p ~ length_bin, family = "binomial", weights = tot_n, data = trt)
-mod <- glmer(p ~ length_bin + (1 | effort_no), family = "binomial", weights = tot_n, data = trt)
-tidy(mod)
-summary(mod)
+# mod <- glm(p ~ length_bin, family = "binomial", weights = tot_n, data = trt)
+# mod <- glmer(p ~ length_bin + (1 | effort_no), family = "binomial", weights = tot_n, data = trt)
+# tidy(mod)
+# summary(mod)
+# pred_df <- data.frame(length_bin = seq(30, 100, 1)) %>% 
+#   mutate(effort_no = 6)
+# pred_df$pred <- predict(mod, pred_df, type = "response")
 
-pred_df <- data.frame(length_bin = seq(30, 100, 1)) %>% 
-  mutate(effort_no = 6)
-
-pred_df$pred <- predict(mod, pred_df, type = "response")
-
-data <- list(len = trt$length_bin, p = trt$p, exp = trt$exp_n, tot = trt$tot_n)
-parameters <- list(l50 = 45, k = 0.2, dummy = 0)
 
 # 2. Fit model
 # Compile and link
 compile("code//escape.cpp")
 dyn.load(dynlib("code//escape"))
+compile("code//mod.cpp")
+dyn.load(dynlib("code//escape"))
+
+compile("escape.cpp")
+dyn.load(dynlib("escape"))
+
+data <- list(len = trt$length_bin, p = trt$p, exp = trt$exp_n, tot = trt$tot_n)
+parameters <- list(l50 = 45, k = 0.2, dummy = 0)
 
 # Model 1 ----
 data$model <- 1

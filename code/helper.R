@@ -8,12 +8,15 @@ options(scipen = 999) # turn off scientific notation
 # Libraries ----
 
 if(!require("mosaic"))   install.packages("mosaic") # derivedFactor, derivedVariable. Masks over a lot of fxns, but generally only improves their utility
-if(!require("tidyverse"))   install.packages("tidyverse") # dplyr, ggplot, etc.
+# if(!require("tidyverse"))   install.packages("tidyverse") # dplyr, ggplot, etc.
+if(!require("dplyr"))   install.packages("dplyr") # dplyr, ggplot, etc.
+if(!require("ggplot2"))   install.packages("ggplot2") # dplyr, ggplot, etc.
+if(!require("readr"))   install.packages("readr") # read_csv
 # if(!require("tidyr"))   install.packages("tidyr") 
 if(!require("lubridate"))   install.packages("lubridate") # dates functions like yday, dmy/mdy
 # if(!require("mgcv"))   install.packages("mgcv") # gams
 # if(!require("gridExtra"))   install.packages("gridExtra") # multipanneled plots
-# if(!require("data.table"))   install.packages("data.table") # dcast, foverlaps
+if(!require("data.table"))   install.packages("data.table") # dcast, foverlaps
 if(!require("ROracle"))   install.packages("ROracle") # database access through R
 # if(!require("broom"))   install.packages("broom") # tidying regression model output
 # if(!require("padr"))   install.packages("padr") # fills in missing values in a time series

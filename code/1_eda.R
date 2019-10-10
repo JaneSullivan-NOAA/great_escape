@@ -23,25 +23,14 @@ bio <- bio %>% filter(!is.na(Treatment))
 # Effort data 
 effort <- read_csv(paste0("data/pot_effort_", YEAR, ".csv"))
 
+install.packages("glmmTMB")
+library(glmmTMB)
+
+mod <- 
 
 # EDA ----
 
-# Length frequencies ----
-bio %>% 
-  filter(!is.na(Treatment) & between(length, 40, 90)) %>%
-  droplevels() %>%
-  ggplot(aes(x = length, colour = Treatment, size = Treatment, linetype = Treatment)) + #, fill = treatment)) +
-  geom_freqpoly() +
-  scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
-  scale_size_manual(values = c(1.3, 0.7, 0.7, 0.7)) +
-  scale_linetype_manual(values = c(1, 1, 2, 3)) +
-  # stat_density_ridges(quantile_lines = TRUE) +
-  xlim(40, 90) +
-  labs(x = "\nLength (cm)", y = "Count\n") + 
-  theme(legend.position = c(0.8, 0.7))
 
-# Caption: Length frequency distribution by escape ring treatment.
-ggsave(paste0("figures/size_freq_", YEAR, ".png"), dpi=300, height=3, width=6, units="in")
 
 # The control pot captured 
 
