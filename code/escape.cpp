@@ -31,8 +31,8 @@ Type objective_function<Type>::operator() ()
   // lengths where there is a 10, 50 and 90 percent probability that a fish will
   // be retained in the escape-ring traps
   PARAMETER(log_s50);
-  PARAMETER(log_lslx); // = exp(sel50 - sel10)
-  PARAMETER(log_uslx); // = exp(sel90 - sel50)
+  PARAMETER(log_slxr); // selection range between 75 and 25 %
+  // PARAMETER(log_uslx); // = exp(sel90 - sel50)
 
   // relative probability of entering a control pot (account for possible
   // difference in the degree to which fish are attracted to escape-ring and to
@@ -43,49 +43,28 @@ Type objective_function<Type>::operator() ()
   PARAMETER_VECTOR(nu);
   
   Type s50 = exp(log_s50);
-  Type s10 = s50 - exp(log_lslx);
-  Type s90 = s50 + exp(log_uslx);
+  Type slxr = exp(log_slxr);
+  // Type s10 = s50 - exp(log_lslx);
+  // Type s90 = s50 + exp(log_uslx);
   Type delta = exp(log_delta);
   
   // MODEL -----
   
   // Selectivity matrix (slx): probability that a fish of length i in set j that
   // is caught in an escape-ring pot will be retained in the pot
-  matrix<Type> slx(nlen, nset);
+  vector<Type> slx(nlen);
   slx.setZero();
-  
-  Type delta_slx = 0;
-  
+
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
-      
-      switch(model) {
-
-      case 1 : // Logistic with 2 parameters
-
-        if (len(i) <= s50) 
-          delta_slx = s50 - s10;
-        else 
-          delta_slx = (Type(2) * s50 - s10) - s50;
         
-          slx(i,j) = Type(1) / (Type(1) + exp( (Type(-2) * log(Type(3)) * len(i) - s50 + nu(j)) / delta_slx ));
-
-      case 2 : // Logistic with 3 parameters
-        
-        if (len(i) <= s50) 
-          delta_slx = s50 - s10;
-        else 
-          delta_slx = s90 - s50;
-        
-        slx(i,j) = Type(1) / (Type(1) + exp( (Type(-2) * log(Type(3)) * len(i) - s50 + nu(j)) / delta_slx ));
-        
-      break;
-
-      // case 3 : // Dome-shaped
-      }
-    }
+        slx(i,j) = Type(1.0) / (Type(1.0) + exp( -Type(2.0) * log(Type(3.0)) * (len(i) - s50 + nu(j)) / slxr));
+    }  
   }
-  
+// 
+  std::cout << "len \n" << len;
+  std::cout << "slx \n" << slx;
+  // 
   // Ratio (r) of the number of control pots to the number of escape-ring pots in set j:
   vector<Type> r(nset);
   r.setZero();
@@ -127,11 +106,12 @@ Type objective_function<Type>::operator() ()
     
   // REPORT SECTION -----
   
-  ADREPORT(s10);
-  ADREPORT(s50);
-  ADREPORT(s90);
-  ADREPORT(slx);
-  ADREPORT(phi);
+  REPORT(s50); 
+  REPORT(slxr); 
+  // REPORT(s10);
+  // REPORT(s90);
+  REPORT(slx);
+  REPORT(phi);
   
   return(nll);
   

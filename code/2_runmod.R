@@ -74,6 +74,7 @@ ggplot(sum_df, aes(x = length_bin, y = p,
   facet_wrap(~Treatment)
 
 TREATMENT <- "4.00 in"
+TREATMENT <- "3.50 in"
 trt <- filter(sum_df, Treatment == TREATMENT)
 # trt <- mutate(trt, Effort_no = factor(effort_no))
 trt <- mutate(trt, effort_no = 1)
@@ -100,20 +101,21 @@ data <- list(model = 1, # model switch
 # Starting values from Table N.4 Model 1.3 and 1.2 in Haist et al. 2004
 parameters <- list(dummy = 0,
                    log_s50 = log(64),
-                   log_lslx = log(64-50),
-                   log_uslx = log(69-64),
-                   log_delta = log(0.92),
+                   log_slxr = log(4),
+                   # log_lslx = log(64-50),
+                   # log_uslx = log(69-64),
+                   log_delta = log(1),
                    nu = rep(0, length(unique(trt$effort_no))))
 
 # Troubleshooting map
 map <- list(log_s50 = factor(NA),
-            log_lslx = factor(NA),
-            log_uslx = factor(NA),
+            log_slxr = factor(NA),
+            # log_lslx = factor(NA),
+            # log_uslx = factor(NA),
             log_delta = factor(NA),
             nu = rep(factor(NA), length(unique(trt$effort_no))))
 
 # Compile TMB code and fit model ----
-
 setwd("~/great_escape/code")
 
 compile("escape.cpp")
@@ -123,19 +125,19 @@ map <- list(dummy = factor(NA),
             # log_s50 = factor(NA),
             # log_lslx = factor(NA),
             # log_uslx = factor(NA),
-            # log_delta = factor(NA),
+            log_delta = factor(NA),
             nu = rep(factor(NA), length(unique(trt$effort_no))))
 
 lowbnd= c(log(45), # log_s50
-          log(2), # log_lslx
-          log(2), # log_uslx
-          log(0.5) # log_delta
+          log(1)#, # log_lslx
+          # log(2), # log_uslx
+          # log(0.5) # log_delta
           ) 
 
-uppbnd= c(log(70), # log_s50
-          log(25), # log_lslx
-          log(25), # log_uslx
-          log(1.5)  # log_delta
+uppbnd= c(log(75), # log_s50
+          log(25)#, # log_lslx
+          # log(25), # log_uslx
+          # log(1.5)  # log_delta
           )  
 
 data$model <- 1
@@ -145,17 +147,41 @@ model <- MakeADFun(data, parameters, map = map,
 # checking for minimization
 xx <- model$fn(model$env$last.par)
 print(model$report())
+
+s50 <- model$report()$s50
+s10 <- model$report()$s10
+s90 <- model$report()$s90
+r <- 4
+
+slx <- vector(length = data$nlen)
+
+for(i in 1:data$nlen) {
+  len <- data$len[i]
+  if(len <= s50) {
+    slx[i] <-  1 / (1 + exp((-2 * log(3) * (len - s50)) / r))
+  } else {
+    slx[i] <- 1 / (1 + exp((-2 * log(3) * (len - s50)) / r))
+  }
+}
+
+slx
+plot(data$len, slx)
+
 fit <- nlminb(model$par, model$fn, model$gr, 
               # control=list(eval.max=1000000,iter.max=100000),
               control=list(rel.tol=1e-12,
-                           eval.max=100000,iter.max=10000),
-              lower=lowbnd,upper=uppbnd)
+                           eval.max=100000,iter.max=10000))#,
+              # lower=lowbnd,upper=uppbnd)
 best <- model$env$last.par.best
 print(best)
+exp(best[1])
 rep <- sdreport(model)
 print(rep)
+
+
+
 cat(model$report()$pfit,"\n")
-res <- data.frame(p = exp(model$report()$log_beta50),
+res <- data.frame(p = exp(model$report()$log_s50),
            p_est = rep(as.list(rep, what = "Estimate")$`p`, length(model$report()$p)),
            p_std = rep(as.list(rep, what = "Std")$`p`, length(model$report()$p)))
 
