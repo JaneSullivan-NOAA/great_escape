@@ -27,7 +27,7 @@ bio <- bio %>%
   filter(!c(length < 40)) %>%
   mutate(length2 = ifelse(length < 41, 41,
                           ifelse(length > 99, 99, length)),
-         Length_bin = cut(length2, breaks = seq(39.9, 99.9, 2),
+         length_bin = cut(length2, breaks = seq(39.9, 99.9, 2),
                           labels = paste(seq(41, 99, 2)))) %>%
   select(-length2)
 
@@ -42,7 +42,7 @@ bio <- bio %>%
 # Reorganize data and get number of fish caught in experimental pots / control
 # pots for each length bin
 sum_df <- bio %>% 
-  group_by(Treatment, Length_bin, .drop=FALSE) %>%  #effort_no,
+  group_by(Treatment, effort_no, length_bin, .drop=FALSE) %>%  #
   dplyr::summarise(n = n()) %>% 
   ungroup()
 
@@ -51,16 +51,15 @@ sum_df <- sum_df %>%
   dplyr::rename(exp_n = n) %>% 
   left_join(sum_df %>% 
               filter(Treatment == "Control") %>% 
-              select(Length_bin,  ctl_n = n)) %>% #effort_no,
+              select(length_bin, effort_no, ctl_n = n)) %>% #
   mutate(tot_n = exp_n + ctl_n,
          # proportion retained in experimental out of control
          p = exp_n / tot_n,
+         length_bin = as.numeric(as.character(length_bin)))
          # FLAG for exp_n / ctl_n:  clean up the data here. If ctl pot = 0, make
          # p2 = exp_n / ctl_n,
          # # p = 0. If exp > ctl, make p = 1
-         # p = ifelse(p2 > 1, 1, ifelse(is.na(p2), 0, p2)),
-         length_bin = as.numeric(as.character(Length_bin))) %>% 
- filter(tot_n > 0)
+         # p = ifelse(p2 > 1, 1, ifelse(is.na(p2), 0, p2))
 
 ggplot(sum_df, aes(x = length_bin, y = p,
                    group =  Treatment, col = Treatment)) +
@@ -76,8 +75,9 @@ ggplot(sum_df, aes(x = length_bin, y = p,
 TREATMENT <- "4.00 in"
 TREATMENT <- "3.50 in"
 trt <- filter(sum_df, Treatment == TREATMENT)
+
 # trt <- mutate(trt, Effort_no = factor(effort_no))
-trt <- mutate(trt, effort_no = 1)
+# trt <- mutate(trt, effort_no = 1)
 
 # mod <- glm(p ~ length_bin, family = "binomial", weights = tot_n, data = trt)
 # mod <- glmer(p ~ length_bin + (1 | effort_no), family = "binomial", weights = tot_n, data = trt)
@@ -92,7 +92,7 @@ trt <- mutate(trt, effort_no = 1)
 data <- list(model = 1, # model switch
              nset = length(unique(trt$effort_no)), # number of sets
              nlen = length(unique(trt$length_bin)), # number of length bins
-             len = unique(trt$length_bin), # vector of lengths
+             len = sort(unique(trt$length_bin)), # vector of lengths
              npot_ctl = rep(4, length(unique(trt$effort_no))), # vector of number of control pots in each set
              npot_exp = rep(4, length(unique(trt$effort_no))), # vector of number of experimental pots in each set
              ctl_dat = matrix(trt$ctl_n, ncol = length(unique(trt$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
@@ -100,8 +100,8 @@ data <- list(model = 1, # model switch
 
 # Starting values from Table N.4 Model 1.3 and 1.2 in Haist et al. 2004
 parameters <- list(dummy = 0,
-                   log_s50 = log(64),
-                   log_slxr = log(4),
+                   log_s50 = log(60),
+                   log_slxr = log(10),
                    # log_lslx = log(64-50),
                    # log_uslx = log(69-64),
                    log_delta = log(1),
@@ -121,37 +121,54 @@ setwd("~/great_escape/code")
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
-map <- list(dummy = factor(NA),
+map <- list(dummy = factor(NA)#,
             # log_s50 = factor(NA),
             # log_lslx = factor(NA),
             # log_uslx = factor(NA),
-            log_delta = factor(NA),
-            nu = rep(factor(NA), length(unique(trt$effort_no))))
+            # log_delta = factor(NA),
+            # nu = rep(factor(NA), length(unique(trt$effort_no)))
+            )
 
 lowbnd= c(log(45), # log_s50
-          log(1)#, # log_lslx
+          log(2),  # log_slxr
+          # log(1), # log_lslx
           # log(2), # log_uslx
-          # log(0.5) # log_delta
+          log(0.5), # log_delta
+          rep(-5, data$nset)
           ) 
 
 uppbnd= c(log(75), # log_s50
-          log(25)#, # log_lslx
+          log(25),  # log_slxr
+          # log(25), # log_lslx
           # log(25), # log_uslx
-          # log(1.5)  # log_delta
+          log(1.5),  # log_delta
+          rep(5, data$nset)
           )  
 
 data$model <- 1
 model <- MakeADFun(data, parameters, map = map, 
                    DLL = "escape", silent = FALSE,
-                   hessian = TRUE)
+                   hessian = TRUE) #, random = "nu"
 # checking for minimization
 xx <- model$fn(model$env$last.par)
 print(model$report())
 
-s50 <- model$report()$s50
-s10 <- model$report()$s10
-s90 <- model$report()$s90
-r <- 4
+fit <- nlminb(model$par, model$fn, model$gr, 
+              # control=list(eval.max=1000000,iter.max=100000),
+              control=list(rel.tol=1e-12,
+                           eval.max=100000,iter.max=10000),
+              lower=lowbnd,upper=uppbnd)
+best <- model$env$last.par.best
+print(best)
+exp(best[3])
+rep <- sdreport(model)
+print(rep)
+
+s50 <- exp(best[1]) #75#model$report()$s50
+# s10 <- model$report()$s10
+# s90 <- model$report()$s90
+r <- exp(best[2])# model$report()$slxr
+phi <- model$report()$phi
 
 slx <- vector(length = data$nlen)
 
@@ -164,20 +181,7 @@ for(i in 1:data$nlen) {
   }
 }
 
-slx
 plot(data$len, slx)
-
-fit <- nlminb(model$par, model$fn, model$gr, 
-              # control=list(eval.max=1000000,iter.max=100000),
-              control=list(rel.tol=1e-12,
-                           eval.max=100000,iter.max=10000))#,
-              # lower=lowbnd,upper=uppbnd)
-best <- model$env$last.par.best
-print(best)
-exp(best[1])
-rep <- sdreport(model)
-print(rep)
-
 
 
 cat(model$report()$pfit,"\n")

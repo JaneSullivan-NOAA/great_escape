@@ -52,18 +52,18 @@ Type objective_function<Type>::operator() ()
   
   // Selectivity matrix (slx): probability that a fish of length i in set j that
   // is caught in an escape-ring pot will be retained in the pot
-  vector<Type> slx(nlen);
+  matrix<Type> slx(nlen,nset);
   slx.setZero();
 
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
         
-        slx(i,j) = Type(1.0) / (Type(1.0) + exp( -Type(2.0) * log(Type(3.0)) * (len(i) - s50 + nu(j)) / slxr));
+        slx(i,j) = Type(1.0) / (Type(1.0) + exp( -Type(2.0) * log(Type(3.0)) * ((len(i) - s50 + nu(j)) / slxr)));
     }  
   }
 // 
-  std::cout << "len \n" << len;
-  std::cout << "slx \n" << slx;
+  // std::cout << "len \n" << len;
+  // std::cout << "slx \n" << slx;
   // 
   // Ratio (r) of the number of control pots to the number of escape-ring pots in set j:
   vector<Type> r(nset);
@@ -92,7 +92,8 @@ Type objective_function<Type>::operator() ()
   // Negative log likelihood
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
-      nll += exp_dat(i,j) * log(phi(i,j)) + ctl_dat(i,j) * log(Type(1) - phi(i,j));
+      if(ctl_dat(i,j) + exp_dat(i,j) > 0)
+      nll -= exp_dat(i,j) * log(phi(i,j)) + ctl_dat(i,j) * log(Type(1) - phi(i,j));
     }
   }
 
