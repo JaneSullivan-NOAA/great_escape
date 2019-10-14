@@ -101,9 +101,9 @@ data <- list(model = 1, # model switch
 # Starting values from Table N.4 Model 1.3 and 1.2 in Haist et al. 2004
 parameters <- list(dummy = 0,
                    log_s50 = log(60),
-                   log_slxr = log(10),
-                   # log_lslx = log(64-50),
-                   # log_uslx = log(69-64),
+                   # log_slxr = log(10),
+                   log_lslx = log(64-50),
+                   log_uslx = log(69-64),
                    log_delta = log(1),
                    nu = rep(0, length(unique(trt$effort_no))))
 
@@ -130,25 +130,25 @@ map <- list(dummy = factor(NA)#,
             )
 
 lowbnd= c(log(45), # log_s50
-          log(2),  # log_slxr
-          # log(1), # log_lslx
-          # log(2), # log_uslx
+          # log(2),  # log_slxr
+          log(1), # log_lslx
+          log(2), # log_uslx
           log(0.5), # log_delta
           rep(-5, data$nset)
           ) 
 
 uppbnd= c(log(75), # log_s50
-          log(25),  # log_slxr
-          # log(25), # log_lslx
-          # log(25), # log_uslx
+          # log(25),  # log_slxr
+          log(25), # log_lslx
+          log(25), # log_uslx
           log(1.5),  # log_delta
           rep(5, data$nset)
           )  
 
-data$model <- 1
+data$model <- 2
 model <- MakeADFun(data, parameters, map = map, 
                    DLL = "escape", silent = FALSE,
-                   hessian = TRUE) #, random = "nu"
+                   hessian = TRUE, random = "nu") #
 # checking for minimization
 xx <- model$fn(model$env$last.par)
 print(model$report())
@@ -164,10 +164,10 @@ exp(best[3])
 rep <- sdreport(model)
 print(rep)
 
-s50 <- exp(best[1]) #75#model$report()$s50
-# s10 <- model$report()$s10
-# s90 <- model$report()$s90
-r <- exp(best[2])# model$report()$slxr
+s50 <- model$report()$s50
+s10 <- model$report()$s10
+s90 <- model$report()$s90
+# r <- exp(best[2])# model$report()$slxr
 phi <- model$report()$phi
 
 slx <- vector(length = data$nlen)
@@ -175,9 +175,9 @@ slx <- vector(length = data$nlen)
 for(i in 1:data$nlen) {
   len <- data$len[i]
   if(len <= s50) {
-    slx[i] <-  1 / (1 + exp((-2 * log(3) * (len - s50)) / r))
+    slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / (s50 - s10))))
   } else {
-    slx[i] <- 1 / (1 + exp((-2 * log(3) * (len - s50)) / r))
+    slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / (s90 - s50))))
   }
 }
 
