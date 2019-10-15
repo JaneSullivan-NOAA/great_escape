@@ -90,3 +90,28 @@ read_csv(paste0("data/raw/pot_effort_", YEAR, ".csv"), guess_max = 50000) %>%
          discard_status_code = DISCARD_STATUS_CODE, discard_status = DISCARD_STATUS,
          n = NUMBERS, comments = POT_COMMENTS) %>% 
   write_csv(paste0("data/pot_effort_", YEAR, ".csv"))
+
+# Fishery girths ----
+
+# Experimental project code for escape ring study = 66 
+query <- 
+  paste0(
+" select  year, effort_no, specimen_no,
+          length_millimeters, weight_kilograms, girth_millimeters
+                   
+  from    out_g_bio_age_sex_size
+
+  where   species_code = '710' and
+          project_code in ('02', '17') and
+          year = ", YEAR)
+
+dbGetQuery(zprod_channel, query) -> fsh
+
+write_csv(pot_bio, paste0("data/raw/pot_bio_", YEAR, ".csv"))
+
+read_csv(paste0("data/raw/pot_bio_", YEAR, ".csv"), guess_max = 50000) %>% 
+  mutate(length = LENGTH_MILLIMETERS / 10) %>% 
+  select(year = YEAR, effort_no = EFFORT_NO, specimen_no = SPECIMEN_NO, 
+         Treatment = POT_TREATMENT_CODE, length, weight = WEIGHT_KILOGRAMS,
+         girth = GIRTH_MILLIMETERS, discard_status = DISCARD_STATUS, comments = COMMENTS) %>% 
+  write_csv(paste0("data/pot_bio_", YEAR, ".csv"))

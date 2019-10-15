@@ -18,6 +18,15 @@ bio <- read_csv(paste0("data/pot_bio_", YEAR, ".csv")) %>%
                                    .default = NA,
                                    .ordered = TRUE))
 
+# Selectivity s90 prior
+sprior <- read_csv(paste0("output/theoretical_selectivity_", YEAR, ".csv"))
+sprior <- sprior %>% 
+  mutate(p = round(p, 1)) %>% 
+  filter(p == 0.9 & Treatment != "Control") %>% 
+  group_by(Treatment) %>% 
+  dplyr::summarise(s90 = mean(length)) %>% 
+  mutate(log_s90 = log(s90))
+
 # Remove data that don't have treatment data associated with them
 bio <- bio %>% filter(!is.na(Treatment))
 
@@ -30,14 +39,6 @@ bio <- bio %>%
          length_bin = cut(length2, breaks = seq(39.9, 99.9, 2),
                           labels = paste(seq(41, 99, 2)))) %>%
   select(-length2)
-
-# bio <- bio %>%
-#   filter(!c(length < 40)) %>%
-#   mutate(length2 = ifelse(length < 41, 41,
-#                           ifelse(length > 79, 79, length)),
-#          Length_bin = cut(length2, breaks = seq(39.9, 79.9, 2),
-#                           labels = paste(seq(41, 79, 2)))) %>%
-#   select(-length2)
 
 # Reorganize data and get number of fish caught in experimental pots / control
 # pots for each length bin
@@ -96,7 +97,9 @@ data <- list(model = 1, # model switch
              npot_ctl = rep(4, length(unique(trt$effort_no))), # vector of number of control pots in each set
              npot_exp = rep(4, length(unique(trt$effort_no))), # vector of number of experimental pots in each set
              ctl_dat = matrix(trt$ctl_n, ncol = length(unique(trt$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
-             exp_dat = matrix(trt$exp_n, ncol = length(unique(trt$effort_no)))) # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
+             exp_dat = matrix(trt$exp_n, ncol = length(unique(trt$effort_no))), # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
+             mu_log_s90 = sprior %>% filter(Treatment %in% TREATMENT) %>% pull(log_s90), # prior on log s90 from theoretical selectivity curves
+             sig_log_s90 = log(5)) # FLAG - testing
 
 # Starting values from Table N.4 Model 1.3 and 1.2 in Haist et al. 2004
 parameters <- list(dummy = 0,
@@ -111,9 +114,11 @@ parameters <- list(dummy = 0,
 
 # Troubleshooting map
 map <- list(log_s50 = factor(NA),
-            log_slxr = factor(NA),
+            # log_slxr = factor(NA),
             # log_lslx = factor(NA),
             # log_uslx = factor(NA),
+            log_s90 = factor(NA),
+            log_s10 = factor(NA),
             log_delta = factor(NA),
             nu = rep(factor(NA), length(unique(trt$effort_no))))
 
@@ -123,31 +128,37 @@ setwd("~/great_escape/code")
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
-map <- list(dummy = factor(NA),
+map <- list(dummy = factor(NA) #,
             # log_s50 = factor(NA),
-            log_lslx = factor(NA)
+            # log_lslx = factor(NA)
             # log_uslx = factor(NA),
             # log_delta = factor(NA),
+            # log(s90) = factor(NA),
+            # log(s10) = factor(NA),
             # nu = rep(factor(NA), length(unique(trt$effort_no)))
             )
 
 lowbnd= c(log(45), # log_s50
           # log(2),  # log_slxr
           # log(1), # log_lslx
-          log(1), # log_uslx
-          log(0.5), # log_delta
+          # log(1), # log_uslx
+          # log(0.5), # log_delta
+          log(10), #log_s90
+          log(10), #log_s10
           rep(-5, data$nset)
           ) 
 
 uppbnd= c(log(75), # log_s50
           # log(25),  # log_slxr
           # log(20), # log_lslx
-          log(20), # log_uslx
-          log(1.5),  # log_delta
+          # log(20), # log_uslx
+          # log(1.5),  # log_delta
+          log(100), #log_s90
+          log(50), #log_s10
           rep(5, data$nset)
           )  
 
-data$model <- 1
+data$model <- 2
 model <- MakeADFun(data, parameters, map = map, 
                    DLL = "escape", silent = FALSE,
                    hessian = TRUE, random = "nu") #
@@ -162,7 +173,6 @@ fit <- nlminb(model$par, model$fn, model$gr,
               lower=lowbnd,upper=uppbnd)
 best <- model$env$last.par.best
 print(best)
-exp(best[3])
 rep <- sdreport(model)
 print(rep)
 

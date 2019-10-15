@@ -23,6 +23,9 @@ Type objective_function<Type>::operator() ()
   DATA_MATRIX(ctl_dat)    // control pots: number of fish in each length bin by set [nlen, nset]
   DATA_MATRIX(exp_dat)    // experimental pots
   
+  DATA_INTEGER(mu_log_s90)  // prior mu for log_s90
+  DATA_INTEGER(sig_log_s90) // prior sigma for log_s90
+  
   // PARAMETER SECTION ----
   
   // Troubleshoot model
@@ -49,11 +52,16 @@ Type objective_function<Type>::operator() ()
   // Type slxr = exp(log_slxr);
   // Type s10 = s50 - exp(log_lslx);
   // Type s90 = s50 + exp(log_uslx);
-  Type s10 = exp(log_s10);
   Type s90 = exp(log_s90);
+  Type s10 = exp(log_s10);
+
   Type delta = exp(log_delta);
   
   // MODEL -----
+  
+  // Prior on log_s90
+  Type prior_log_s90 = 0;
+  prior_log_s90 = Type(0.5) * square(log_s90 - mu_log_s90) / square(sig_log_s90);
   
   // Selectivity matrix (slx): probability that a fish of length i in set j that
   // is caught in an escape-ring pot will be retained in the pot
@@ -112,8 +120,9 @@ Type objective_function<Type>::operator() ()
   
   // OBJECTIVE FUNCTION -----
 
-  Type nll = 0;
-
+  Type nll = 0;             // Negative log likelihood
+  nll += prior_log_s90;     // Add prior on log_s90
+  
   // Negative log likelihood
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
