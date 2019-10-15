@@ -73,7 +73,7 @@ ggplot(sum_df, aes(x = length_bin, y = p,
   facet_wrap(~Treatment)
 
 TREATMENT <- "4.00 in"
-TREATMENT <- "3.50 in"
+# TREATMENT <- "3.50 in"
 trt <- filter(sum_df, Treatment == TREATMENT)
 
 # trt <- mutate(trt, Effort_no = factor(effort_no))
@@ -102,8 +102,10 @@ data <- list(model = 1, # model switch
 parameters <- list(dummy = 0,
                    log_s50 = log(60),
                    # log_slxr = log(10),
-                   log_lslx = log(64-50),
-                   log_uslx = log(69-64),
+                   # log_lslx = log(64-50),
+                   # log_uslx = log(69-64),
+                   log_s90 = log(69),
+                   log_s10 = log(50),
                    log_delta = log(1),
                    nu = rep(0, length(unique(trt$effort_no))))
 
@@ -121,9 +123,9 @@ setwd("~/great_escape/code")
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
-map <- list(dummy = factor(NA)#,
+map <- list(dummy = factor(NA),
             # log_s50 = factor(NA),
-            # log_lslx = factor(NA),
+            log_lslx = factor(NA)
             # log_uslx = factor(NA),
             # log_delta = factor(NA),
             # nu = rep(factor(NA), length(unique(trt$effort_no)))
@@ -131,21 +133,21 @@ map <- list(dummy = factor(NA)#,
 
 lowbnd= c(log(45), # log_s50
           # log(2),  # log_slxr
-          log(1), # log_lslx
-          log(2), # log_uslx
+          # log(1), # log_lslx
+          log(1), # log_uslx
           log(0.5), # log_delta
           rep(-5, data$nset)
           ) 
 
 uppbnd= c(log(75), # log_s50
           # log(25),  # log_slxr
-          log(25), # log_lslx
-          log(25), # log_uslx
+          # log(20), # log_lslx
+          log(20), # log_uslx
           log(1.5),  # log_delta
           rep(5, data$nset)
           )  
 
-data$model <- 2
+data$model <- 1
 model <- MakeADFun(data, parameters, map = map, 
                    DLL = "escape", silent = FALSE,
                    hessian = TRUE, random = "nu") #
