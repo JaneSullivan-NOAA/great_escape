@@ -24,8 +24,6 @@ Type objective_function<Type>::operator() ()
   DATA_MATRIX(exp_dat)    // experimental pots
   
   DATA_INTEGER(mu_log_s90)  // prior mu for log_s90
-  DATA_INTEGER(sig_log_s90) // prior sigma for log_s90
-  DATA_INTEGER(mu_log_s90)  // prior mu for log_s90
   DATA_INTEGER(mu_log_s10)  // prior mu for log_s10
   DATA_INTEGER(log_sigma)   // prior sigma for log_s90 and log_s10
   
@@ -67,6 +65,10 @@ Type objective_function<Type>::operator() ()
   // is caught in an escape-ring pot will be retained in the pot
   matrix<Type> slx(nlen,nset);
   slx.setZero();
+  
+  // Fitted values
+  vector<Type> fit_slx(nlen);
+  fit_slx.setZero();
 
   Type delta_slx = 0;
   
@@ -78,9 +80,11 @@ Type objective_function<Type>::operator() ()
         case 1 : // Logistic with 2 parameters
           
           if (len(i) <= s50) 
-            delta_slx = Type(2) * s50 - s90;
+            delta_slx = s50 - (Type(2) * s50 - s90);
           else 
             delta_slx = s90 - s50;
+          
+          break;
           
         case 2 : // Logistic with 3 parameters
           
@@ -92,10 +96,11 @@ Type objective_function<Type>::operator() ()
           break;
         }
       slx(i,j) = Type(1) / (Type(1) + exp( Type(-2) * log(Type(3)) * ((len(i) - s50 + nu(j)) / delta_slx)));
-    }  
+    }
+    fit_slx(i) = Type(1) / (Type(1) + exp( Type(-2) * log(Type(3)) * ((len(i) - s50) / delta_slx)));
   }
-// 
-  // std::cout << "len \n" << len;
+
+    // std::cout << "len \n" << len;
   // std::cout << "slx \n" << slx;
   // 
   // Ratio (r) of the number of control pots to the number of escape-ring pots in set j:
@@ -122,7 +127,10 @@ Type objective_function<Type>::operator() ()
 
   Type nll = 0;             // Negative log likelihood
   nll += prior_log_s90;     // Add prior on log_s90
-  nll += prior_log_s10;     // Add prior on log_s10
+  
+  if (model == 2) {
+    nll += prior_log_s10;   // Only add log_s10 prior if estimating 3rd parameter 
+  }
   
   // Negative log likelihood
   for (int i = 0; i < nlen; i++) {
@@ -142,6 +150,7 @@ Type objective_function<Type>::operator() ()
     
   // REPORT SECTION -----
   
+  REPORT(fit_slx);
   REPORT(s50); 
   REPORT(s10);
   REPORT(s90);

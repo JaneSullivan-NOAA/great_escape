@@ -65,18 +65,24 @@ sum_df <- sum_df %>%
 ggplot(sum_df, aes(x = length_bin, y = p,
                    group =  Treatment, col = Treatment)) +
   geom_point() +
-  geom_line()
+  geom_line() +
+  facet_wrap(~Treatment)
 
 ggplot(sum_df, aes(x = length_bin, y = p,
                    group =  factor(effort_no), col = factor(effort_no))) +
   geom_point() +
   geom_line() +
-  facet_wrap(~Treatment)
+  facet_grid(effort_no ~ Treatment)
 
 TREATMENT <- "4.00 in"
 # TREATMENT <- "3.50 in"
 trt <- filter(sum_df, Treatment == TREATMENT)
 
+remove_sets <- c(3,8,12,13,14,15,17)
+
+trt %>% group_by(effort_no) %>% summarise(sum(tot_n))
+
+trt <- trt %>% filter(!c(effort_no %in% remove_sets))
 # trt <- mutate(trt, Effort_no = factor(effort_no))
 # trt <- mutate(trt, effort_no = 1)
 
@@ -99,7 +105,8 @@ data <- list(model = 1, # model switch
              ctl_dat = matrix(trt$ctl_n, ncol = length(unique(trt$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
              exp_dat = matrix(trt$exp_n, ncol = length(unique(trt$effort_no))), # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
              mu_log_s90 = sprior %>% filter(Treatment %in% TREATMENT) %>% pull(log_s90), # prior on log s90 from theoretical selectivity curves
-             sig_log_s90 = log(5)) # FLAG - testing
+             mu_log_s10 = log(50), # prior on log s10
+             log_sigma = log(5)) 
 
 # Starting values from Table N.4 Model 1.3 and 1.2 in Haist et al. 2004
 parameters <- list(dummy = 0,
@@ -122,29 +129,29 @@ setwd("~/great_escape/code")
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
-map <- list(dummy = factor(NA) #,
+map <- list(dummy = factor(NA), #
             # log_s50 = factor(NA),
-            # log_lslx = factor(NA)
-            # log_uslx = factor(NA),
-            # log_delta = factor(NA),
-            # log(s90) = factor(NA),
-            # log(s10) = factor(NA),
+            # log_s90 = factor(NA),
+            log_s10 = factor(NA),
+            log_delta = factor(NA)
             # nu = rep(factor(NA), length(unique(trt$effort_no)))
             )
 
 lowbnd= c(log(45),  # log_s50
           log(10),  # log_s90
-          log(10),  # log_s10
+          # log(10),  # log_s10
+          # log(0.5), # log_delta
           rep(-5, data$nset)
           ) 
 
 uppbnd= c(log(75),  # log_s50
           log(100), # log_s90
-          log(50),  # log_s10
+          # log(50),  # log_s10
+          # log(1.5), # log_delta
           rep(5, data$nset)
           )  
 
-data$model <- 2
+data$model <- 1
 model <- MakeADFun(data, parameters, map = map, 
                    DLL = "escape", silent = FALSE,
                    hessian = TRUE, random = "nu") #
@@ -162,9 +169,10 @@ print(best)
 rep <- sdreport(model)
 print(rep)
 
-s50 <- model$report()$s50
-s10 <- model$report()$s10
-s90 <- model$report()$s90
+(s50 <- model$report()$s50)
+(s10 <- model$report()$s10)
+(s90 <- model$report()$s90)
+(fit_slx <- model$report()$fit_slx)
 # r <- exp(best[2])# model$report()$slxr
 phi <- model$report()$phi
 
@@ -172,15 +180,24 @@ slx <- vector(length = data$nlen)
 
 for(i in 1:data$nlen) {
   len <- data$len[i]
-  if(len <= s50) {
-    slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / (s50 - s10))))
+  
+  if(data$model == 1) {
+    if(len <= s50) {
+      delta_slx <- s50 - (2 * s50 - s90)
+    } else {
+      delta_slx <- s90 - s50
+    }
   } else {
-    slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / (s90 - s50))))
+    if(len <= s50) {
+      delta_slx <- s50 - s10
+    } else {
+      delta_slx <- s90 - s50
+    }
   }
+    slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / delta_slx)))
 }
-
-plot(data$len, slx)
-
+plot(data$len, fit_slx, type = "l", col = "black")
+points(data$len, slx, col = "red")
 
 cat(model$report()$pfit,"\n")
 res <- data.frame(p = exp(model$report()$log_s50),
