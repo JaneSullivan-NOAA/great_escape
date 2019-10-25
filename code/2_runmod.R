@@ -104,9 +104,6 @@ data <- list(model = 1, # model switch
 # Starting values from Table N.4 Model 1.3 and 1.2 in Haist et al. 2004
 parameters <- list(dummy = 0,
                    log_s50 = log(60),
-                   # log_slxr = log(10),
-                   # log_lslx = log(64-50),
-                   # log_uslx = log(69-64),
                    log_s90 = log(69),
                    log_s10 = log(50),
                    log_delta = log(1),
@@ -114,9 +111,6 @@ parameters <- list(dummy = 0,
 
 # Troubleshooting map
 map <- list(log_s50 = factor(NA),
-            # log_slxr = factor(NA),
-            # log_lslx = factor(NA),
-            # log_uslx = factor(NA),
             log_s90 = factor(NA),
             log_s10 = factor(NA),
             log_delta = factor(NA),
@@ -138,23 +132,15 @@ map <- list(dummy = factor(NA) #,
             # nu = rep(factor(NA), length(unique(trt$effort_no)))
             )
 
-lowbnd= c(log(45), # log_s50
-          # log(2),  # log_slxr
-          # log(1), # log_lslx
-          # log(1), # log_uslx
-          # log(0.5), # log_delta
-          log(10), #log_s90
-          log(10), #log_s10
+lowbnd= c(log(45),  # log_s50
+          log(10),  # log_s90
+          log(10),  # log_s10
           rep(-5, data$nset)
           ) 
 
-uppbnd= c(log(75), # log_s50
-          # log(25),  # log_slxr
-          # log(20), # log_lslx
-          # log(20), # log_uslx
-          # log(1.5),  # log_delta
-          log(100), #log_s90
-          log(50), #log_s10
+uppbnd= c(log(75),  # log_s50
+          log(100), # log_s90
+          log(50),  # log_s10
           rep(5, data$nset)
           )  
 

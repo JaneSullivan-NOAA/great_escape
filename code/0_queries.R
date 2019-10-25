@@ -93,25 +93,27 @@ read_csv(paste0("data/raw/pot_effort_", YEAR, ".csv"), guess_max = 50000) %>%
 
 # Fishery girths ----
 
-# Experimental project code for escape ring study = 66 
 query <- 
   paste0(
-" select  year, effort_no, specimen_no,
+" select  year, trip_no, sell_date, specimen_no,
           length_millimeters, weight_kilograms, girth_millimeters
                    
   from    out_g_bio_age_sex_size
 
   where   species_code = '710' and
           project_code in ('02', '17') and
+          girth_millimeters is not null and
           year = ", YEAR)
+          
 
 dbGetQuery(zprod_channel, query) -> fsh
 
-write_csv(pot_bio, paste0("data/raw/pot_bio_", YEAR, ".csv"))
+write_csv(fsh, paste0("data/raw/fsh_bio_", YEAR, ".csv"))
 
-read_csv(paste0("data/raw/pot_bio_", YEAR, ".csv"), guess_max = 50000) %>% 
-  mutate(length = LENGTH_MILLIMETERS / 10) %>% 
-  select(year = YEAR, effort_no = EFFORT_NO, specimen_no = SPECIMEN_NO, 
-         Treatment = POT_TREATMENT_CODE, length, weight = WEIGHT_KILOGRAMS,
-         girth = GIRTH_MILLIMETERS, discard_status = DISCARD_STATUS, comments = COMMENTS) %>% 
-  write_csv(paste0("data/pot_bio_", YEAR, ".csv"))
+read_csv(paste0("data/raw/fsh_bio_", YEAR, ".csv"), guess_max = 50000) %>% 
+  mutate(length = LENGTH_MILLIMETERS / 10,
+         date = ymd(as.Date(SELL_DATE)), #ISO 8601 format
+         julian_day = yday(date)) %>% 
+  select(year = YEAR, date, julian_day, trip_no = TRIP_NO, specimen_no = SPECIMEN_NO,
+         length, weight = WEIGHT_KILOGRAMS, girth = GIRTH_MILLIMETERS) %>% 
+  write_csv(paste0("data/fsh_bio_", YEAR, ".csv"))

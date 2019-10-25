@@ -25,6 +25,9 @@ Type objective_function<Type>::operator() ()
   
   DATA_INTEGER(mu_log_s90)  // prior mu for log_s90
   DATA_INTEGER(sig_log_s90) // prior sigma for log_s90
+  DATA_INTEGER(mu_log_s90)  // prior mu for log_s90
+  DATA_INTEGER(mu_log_s10)  // prior mu for log_s10
+  DATA_INTEGER(log_sigma)   // prior sigma for log_s90 and log_s10
   
   // PARAMETER SECTION ----
   
@@ -34,11 +37,8 @@ Type objective_function<Type>::operator() ()
   // lengths where there is a 10, 50 and 90 percent probability that a fish will
   // be retained in the escape-ring traps
   PARAMETER(log_s50);
-  // PARAMETER(log_lslx); // = exp(sel50 - sel10)
-  // PARAMETER(log_uslx); // = exp(sel90 - sel50)
   PARAMETER(log_s90);
   PARAMETER(log_s10);
-  // PARAMETER(log_slxr); // selection range between 75 and 25 %
 
   // relative probability of entering a control pot (account for possible
   // difference in the degree to which fish are attracted to escape-ring and to
@@ -49,9 +49,6 @@ Type objective_function<Type>::operator() ()
   PARAMETER_VECTOR(nu);
   
   Type s50 = exp(log_s50);
-  // Type slxr = exp(log_slxr);
-  // Type s10 = s50 - exp(log_lslx);
-  // Type s90 = s50 + exp(log_uslx);
   Type s90 = exp(log_s90);
   Type s10 = exp(log_s10);
 
@@ -59,9 +56,12 @@ Type objective_function<Type>::operator() ()
   
   // MODEL -----
   
-  // Prior on log_s90
+  // Prior on log_s90 and log_s10
   Type prior_log_s90 = 0;
-  prior_log_s90 = Type(0.5) * square(log_s90 - mu_log_s90) / square(sig_log_s90);
+  Type prior_log_s10 = 0;
+  
+  prior_log_s90 = Type(0.5) * square(log_s90 - mu_log_s90) / square(log_sigma);
+  prior_log_s10 = Type(0.5) * square(log_s10 - mu_log_s10) / square(log_sigma);
   
   // Selectivity matrix (slx): probability that a fish of length i in set j that
   // is caught in an escape-ring pot will be retained in the pot
@@ -122,6 +122,7 @@ Type objective_function<Type>::operator() ()
 
   Type nll = 0;             // Negative log likelihood
   nll += prior_log_s90;     // Add prior on log_s90
+  nll += prior_log_s10;     // Add prior on log_s10
   
   // Negative log likelihood
   for (int i = 0; i < nlen; i++) {
@@ -142,7 +143,6 @@ Type objective_function<Type>::operator() ()
   // REPORT SECTION -----
   
   REPORT(s50); 
-  // REPORT(slxr); 
   REPORT(s10);
   REPORT(s90);
   REPORT(slx);

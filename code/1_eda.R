@@ -18,6 +18,9 @@ bio <- read_csv(paste0("data/pot_bio_", YEAR, ".csv")) %>%
                                    .default = NA,
                                    .ordered = TRUE))
 
+# Fishery girth data (collected in order to account for grith seasonal adjustments)
+fsh_grth <- read_csv(paste0("data/fsh_bio_", YEAR, ".csv")) 
+
 # Effort data 
 effort <- read_csv(paste0("data/pot_effort_", YEAR, ".csv"))
 
@@ -72,9 +75,7 @@ p <- ggplot(grth, aes(x = length, y = girth)) +
 ggsave(plot = p, filename = paste0("figures/girth_bytreatment_", YEAR, ".png"), 
        dpi=300, height=5, width=6, units="in")
 
-# Girth adjustments  ----
-
-# Lay groundwork for girth adjustments - currently not used
+# Girth by treatment ----
 
 # Girth isn't normally distributed. Log-transformation improves it but
 # assumption still violated. Consequently I used I used glm instead of lm
@@ -98,18 +99,72 @@ R2_complex <- 1 - (fit_complex$deviance / fit_complex$null.deviance)
 
 # Get fitted values for girth and prediction intervals (need to exponentiate for figure)
 pred <- bio %>% select(Treatment, length)
-pred <- ciTools::add_pi(pred, fit_complex, alpha = 0.5, names = c("pi_lwr", "pi_upp"))
+pred <- ciTools::add_pi(pred, fit_complex, alpha = 0.05, names = c("pi_lwr", "pi_upp"))
+
+# Apply bias correction
+pred <- pred %>% 
+  mutate(fitted = exp(pred) * exp(0.5 * sigma(fit_int)^2),
+         lower = exp(pi_lwr) * exp(0.5 * sigma(fit_int)^2),
+         upper = exp(pi_upp) * exp(0.5 * sigma(fit_int)^2))
 
 p <- ggplot() +
   geom_point(data = grth, aes(x = length, y = girth), shape = 20) +
-  geom_ribbon(data = pred, aes(x = length, ymin = exp(pi_lwr), ymax = exp(pi_upp)), 
+  geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper), 
               alpha = 0.6, fill = "grey70") +
-  geom_line(data = pred, aes(x = length, y = exp(pred), group = Treatment)) +
+  geom_line(data = pred, aes(x = length, y = fitted, group = Treatment)) +
   facet_wrap(~ Treatment) +
   labs(x = "\nLength (cm)", y = "Girth (mm)\n") 
-
+p
 ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".png"), 
        dpi=300, height=5, width=6, units="in")
+
+# Girth adjustments  ----
+
+# Combine girths from survey and fishery
+comb_grth <- grth %>% 
+  filter(Treatment == "Control") %>%
+  select(length, girth) %>% 
+  mutate(Source = "Survey (May)") %>% 
+  bind_rows(fsh_grth %>% 
+              select(length, girth) %>% 
+              mutate(Source = "Fishery (Sep and Oct)"))
+
+fit_simple <- glm(log(girth) ~ log(length), 
+                  family = gaussian(link = "identity"), data = comb_grth)
+fit_int <- glm(log(girth) ~ log(length) + Source, 
+               family = gaussian(link = "identity"), data = comb_grth)
+fit_intslp <- glm(log(girth) ~ log(length) * Source, 
+                  family = gaussian(link = "identity"), data = comb_grth)
+AIC(fit_simple, fit_int, fit_intslp) # best model = different intercepts
+
+summary(fit_int)
+R2_int <- 1 - (fit_int$deviance / fit_int$null.deviance)
+
+# Get fitted values for girth and prediction intervals (need to exponentiate for figure)
+pred <- comb_grth %>% select(Source, length)
+pred <- ciTools::add_pi(pred, fit_int, alpha = 0.05, names = c("pi_lwr", "pi_upp"))
+
+# Apply bias correction
+pred <- pred %>% 
+  mutate(fitted = exp(pred) * exp(0.5 * sigma(fit_int)^2),
+         lower = exp(pi_lwr) * exp(0.5 * sigma(fit_int)^2),
+         upper = exp(pi_upp) * exp(0.5 * sigma(fit_int)^2))
+
+p <- ggplot() +
+  geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper, fill = Source), 
+              alpha = 0.3) +
+  geom_point(data = comb_grth, aes(x = length, y = girth, colour = Source, shape = Source), size = 0.8) +
+  geom_line(data = pred, aes(x = length, y = fitted, group = Source, colour = Source, linetype = Source), size = 1) +
+  scale_colour_manual(values = c("grey10", "grey60")) +
+  scale_fill_manual(values = c("grey80", "grey70")) +
+  labs(x = "\nLength (cm)", y = "Girth (mm)\n") +
+  theme(legend.position = c(0.8, 0.2))
+
+# Caption: A comparison of fitted values and prediction intervals for the
+# regression of girth on length for data collected during the survey in May
+# (grey triangles) and fishery in September and October (black circles).
+ggsave(plot = p, filename = paste0("figures/girth_bysource_", YEAR, ".png"), 
+       dpi=300, height=3, width=6, units="in")
 
 # Theoretical selectivity curves ----
 
@@ -139,7 +194,7 @@ ring <- data.frame(ring_in = c(2.5, 3.5, 3.75, 4)) %>%
   mutate(ring_mm = ring_in * 25.4)
 
 # Assume girths are lognormally distributed. Simulate girth distribution at 1 cm
-# increments, divide by pi to get approximate fish girth. Determine proportion
+# increments, divide by pi to get approximate fish diameter. Determine proportion
 # retained for each treatment, assuming any fish diameter < the ring diameter
 # would be able to escape.
 sel <- matrix(nrow = length(pred_df$pred),
