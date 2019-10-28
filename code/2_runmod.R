@@ -30,6 +30,10 @@ sprior <- sprior %>%
 # Remove data that don't have treatment data associated with them
 bio <- bio %>% filter(!is.na(Treatment))
 
+# Remove outliers
+
+bio %>% filter(length != min(bio$length)) %>% distinct(length) %>% arrange(length)
+bio %>% filter(length == 30)
 # Length bins
 # Same length bin structure used by Feds)
 bio <- bio %>%
@@ -43,7 +47,7 @@ bio <- bio %>%
 # Reorganize data and get number of fish caught in experimental pots / control
 # pots for each length bin
 sum_df <- bio %>% 
-  group_by(Treatment, effort_no, length_bin, .drop=FALSE) %>%  #
+  group_by(Treatment, effort_no, length_bin, .drop=FALSE) %>% #
   dplyr::summarise(n = n()) %>% 
   ungroup()
 
@@ -57,16 +61,13 @@ sum_df <- sum_df %>%
          # proportion retained in experimental out of control
          p = exp_n / tot_n,
          length_bin = as.numeric(as.character(length_bin)))
-         # FLAG for exp_n / ctl_n:  clean up the data here. If ctl pot = 0, make
-         # p2 = exp_n / ctl_n,
-         # # p = 0. If exp > ctl, make p = 1
-         # p = ifelse(p2 > 1, 1, ifelse(is.na(p2), 0, p2))
 
 ggplot(sum_df, aes(x = length_bin, y = p,
                    group =  Treatment, col = Treatment)) +
   geom_point() +
-  geom_line() +
-  facet_wrap(~Treatment)
+  # geom_line() +
+  facet_wrap(~Treatment) +
+  geom_smooth()
 
 ggplot(sum_df, aes(x = length_bin, y = p,
                    group =  factor(effort_no), col = factor(effort_no))) +
@@ -74,15 +75,13 @@ ggplot(sum_df, aes(x = length_bin, y = p,
   geom_line() +
   facet_grid(effort_no ~ Treatment)
 
-TREATMENT <- "4.00 in"
-# TREATMENT <- "3.50 in"
-trt <- filter(sum_df, Treatment == TREATMENT)
 
-remove_sets <- c(3,8,12,13,14,15,17)
 
-trt %>% group_by(effort_no) %>% summarise(sum(tot_n))
 
-trt <- trt %>% filter(!c(effort_no %in% remove_sets))
+# remove_sets <- c(3,8,12,13,14,15,17)
+# trt %>% group_by(effort_no) %>% summarise(sum(tot_n))
+# trt <- trt %>% filter(!c(effort_no %in% remove_sets))
+
 # trt <- mutate(trt, Effort_no = factor(effort_no))
 # trt <- mutate(trt, effort_no = 1)
 
@@ -94,62 +93,149 @@ trt <- trt %>% filter(!c(effort_no %in% remove_sets))
 #   mutate(effort_no = 6)
 # pred_df$pred <- predict(mod, pred_df, type = "response")
 
-# Data, parameter, and map for TMB ----
-
-data <- list(model = 1, # model switch
-             nset = length(unique(trt$effort_no)), # number of sets
-             nlen = length(unique(trt$length_bin)), # number of length bins
-             len = sort(unique(trt$length_bin)), # vector of lengths
-             npot_ctl = rep(4, length(unique(trt$effort_no))), # vector of number of control pots in each set
-             npot_exp = rep(4, length(unique(trt$effort_no))), # vector of number of experimental pots in each set
-             ctl_dat = matrix(trt$ctl_n, ncol = length(unique(trt$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
-             exp_dat = matrix(trt$exp_n, ncol = length(unique(trt$effort_no))), # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
-             mu_log_s90 = sprior %>% filter(Treatment %in% TREATMENT) %>% pull(log_s90), # prior on log s90 from theoretical selectivity curves
-             mu_log_s10 = log(50), # prior on log s10
-             log_sigma = log(5)) 
-
-# Starting values from Table N.4 Model 1.3 and 1.2 in Haist et al. 2004
-parameters <- list(dummy = 0,
-                   log_s50 = log(60),
-                   log_s90 = log(69),
-                   log_s10 = log(50),
-                   log_delta = log(1),
-                   nu = rep(0, length(unique(trt$effort_no))))
-
-# Troubleshooting map
-map <- list(log_s50 = factor(NA),
-            log_s90 = factor(NA),
-            log_s10 = factor(NA),
-            log_delta = factor(NA),
-            nu = rep(factor(NA), length(unique(trt$effort_no))))
-
 # Compile TMB code and fit model ----
 setwd("~/great_escape/code")
 
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
-map <- list(dummy = factor(NA), #
-            # log_s50 = factor(NA),
-            # log_s90 = factor(NA),
-            log_s10 = factor(NA),
-            log_delta = factor(NA)
-            # nu = rep(factor(NA), length(unique(trt$effort_no)))
-            )
+# Function to fit selectivity curves
+fit_slx <- function(treatment = TREATMENT, 
+                    model = MODEL,
+                    # Priors
+                    #mu_log_s90 = mu_log_s90,
+                    mu_log_s10 = log(50),
+                    sig_log_s90 = log(4),
+                    sig_log_s10 = log(4),
+                    # Initial values ("i_"): Starting values from Table N.4
+                    # Model 1.3 and 1.2 in Haist et al. 2004
+                    i_log_s50 = log(60),
+                    i_log_s90 = log(69),
+                    i_log_s10 = log(50),
+                    # Lower ("l_") and upper ("u_") bounds
+                    l_log_s50 = log(55),
+                    u_log_s50 = log(65),
+                    l_log_s90 = log(65),
+                    u_log_s90 = log(80),
+                    l_log_s10 = log(40),
+                    u_log_s10 = log(50),
+                    l_log_delta = log(0.5),
+                    u_log_delta = log(1.5) 
+                    ) {
 
-lowbnd= c(log(45),  # log_s50
-          log(10),  # log_s90
-          # log(10),  # log_s10
-          # log(0.5), # log_delta
-          rep(-5, data$nset)
-          ) 
+  trt <- filter(sum_df, Treatment == TREATMENT)  # Subset treatment
+  
+  # Default data and switches
+  data <- list(slx_type = 1, # model switch
+               nset = length(unique(trt$effort_no)), # number of sets
+               nlen = length(unique(trt$length_bin)), # number of length bins
+               len = sort(unique(trt$length_bin)), # vector of lengths
+               npot_ctl = rep(4, length(unique(trt$effort_no))), # vector of number of control pots in each set
+               npot_exp = rep(4, length(unique(trt$effort_no))), # vector of number of experimental pots in each set
+               ctl_dat = matrix(trt$ctl_n, ncol = length(unique(trt$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
+               exp_dat = matrix(trt$exp_n, ncol = length(unique(trt$effort_no))), # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
+               # Priors
+               mu_log_s90 = sprior %>% filter(Treatment %in% TREATMENT) %>% pull(log_s90), # prior on log s90 from theoretical selectivity curves
+               mu_log_s10 = mu_log_s10, 
+               sig_log_s90 = sig_log_s90,
+               sig_log_s10 = sig_log_s10) 
+  
+  parameters <- list(dummy = 0,
+                     log_s50 = i_log_s50,
+                     log_s90 = i_log_s90,
+                     log_s10 = i_log_s10,
+                     log_delta = log(1),
+                     nu = rep(0, length(unique(trt$effort_no))))
+  
+  # Model 0: Troubleshooting mode
+  if (model == 0) 
+  {
+    map <- list(log_s50 = factor(NA),
+                log_s90 = factor(NA),
+                log_s10 = factor(NA),
+                log_delta = factor(NA),
+                nu = rep(factor(NA), length(unique(trt$effort_no))))
+    lownd <- c(0)
+    uppbnd <- c(0)
+    
+    obj <- MakeADFun(data, parameters, map = map, DLL = "escape")
+  }
+  
+  # Model 1: Fixed delta, symmetric logistic (2 param)     
+  if (model == 1)
+  {
+    map <- list(dummy = factor(NA), 
+                log_s10 = factor(NA),
+                log_delta = factor(NA))
+    # Bound random effect between [-5, 5]
+    lowbnd <- c(l_log_s50, l_log_s90, rep(-5, data$nset)) 
+    uppbnd <- c(u_log_s50, u_log_s90, rep(5, data$nset)) 
+    obj <- MakeADFun(data, parameters, map = map, 
+              DLL = "escape", silent = FALSE,
+              hessian = TRUE, random = "nu")
+  }
+  
+  # Model 2: Fixed delta, asymmetric logistic (3 param)
+  if (model == 2)
+  {
+    data$slx_type <- 2
+    map <- list(dummy = factor(NA),
+                log_delta = factor(NA))
+    lowbnd <- c(l_log_s50, l_log_s90, l_log_s10, rep(-5, data$nset)) 
+    uppbnd <- c(u_log_s50, u_log_s90, u_log_s10, rep(5, data$nset)) 
+    obj <- MakeADFun(data, parameters, map = map, 
+                     DLL = "escape", silent = FALSE,
+                     hessian = TRUE, random = "nu")
+  }
+  
+  # Model 3: Estimate delta, symmetric logistic (3 param)
+  if (model == 3)
+  {
+    map <- list(dummy = factor(NA), 
+                log_s10 = factor(NA))
+    lowbnd <- c(l_log_s50, l_log_s90, l_log_delta, rep(-5, data$nset)) 
+    uppbnd <- c(u_log_s50, u_log_s90, u_log_delta, rep(5, data$nset)) 
+    obj <- MakeADFun(data, parameters, map = map, 
+                     DLL = "escape", silent = FALSE,
+                     hessian = TRUE, random = "nu")
+  }
+  
+  # Model 3: Estimate delta, asymmetric logistic (4 param)
+  if (model == 4)
+  {
+    data$slx_type <- 2
+    map <- list(dummy = factor(NA))
+    lowbnd <- c(l_log_s50, l_log_s90, l_log_s10, l_log_delta, rep(-5, data$nset)) 
+    uppbnd <- c(u_log_s50, u_log_s90, u_log_s10, u_log_delta, rep(5, data$nset)) 
+    obj <- MakeADFun(data, parameters, map = map, 
+                     DLL = "escape", silent = FALSE,
+                     hessian = TRUE, random = "nu")
+  }
+  
+  opt <- nlminb(obj$par, obj$fn, obj$gr,
+                control = list(rel.tol = 1e-12, eval.max = 100000, iter.max = 10000),
+                lower = lowbnd, upper = uppbnd)
+  rep <- sdreport(obj)
+  out <- list("data" = data, "obj" = obj, "opt" = opt, "rep" = rep)
+  return(out)
+}
 
-uppbnd= c(log(75),  # log_s50
-          log(100), # log_s90
-          # log(50),  # log_s10
-          # log(1.5), # log_delta
-          rep(5, data$nset)
-          )  
+# User inputs
+TREATMENT <- "3.75 in"
+
+# Model options
+# 0: Troubleshooting mode
+# 1: Fixed delta, symmetric logistic
+# 2: Fixed delta, asymmetric logistic
+# 3: Estimate delta, symmetric logistic
+# 4: Estimate delta, asymmetric logistic
+MODEL <- 4
+
+out <- fit_slx()
+
+out[[4]]
+summary(out[[4]])
+plot(out[[1]]$len, out[[2]]$report()$fit_slx, type = "l", col = "black")
 
 data$model <- 1
 model <- MakeADFun(data, parameters, map = map, 
@@ -174,12 +260,15 @@ print(rep)
 (s90 <- model$report()$s90)
 (fit_slx <- model$report()$fit_slx)
 # r <- exp(best[2])# model$report()$slxr
-phi <- model$report()$phi
+(phi <- model$report()$phi)
 
-slx <- vector(length = data$nlen)
-
-for(i in 1:data$nlen) {
-  len <- data$len[i]
+# slx <- vector(length = data$nlen)
+lengths <- seq(10, 100, 2)
+slx <- vector(length = length(lengths))
+# for(i in 1:data$nlen) {
+#   len <- data$len[i]
+for(i in 1:length(lengths)) {
+  len <- lengths[i]
   
   if(data$model == 1) {
     if(len <= s50) {
@@ -194,11 +283,15 @@ for(i in 1:data$nlen) {
       delta_slx <- s90 - s50
     }
   }
-    slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / delta_slx)))
+  slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / delta_slx)))
 }
-plot(data$len, fit_slx, type = "l", col = "black")
-points(data$len, slx, col = "red")
+plot(lengths, slx, col = "red")
+points(data$len, fit_slx, type = "l", col = "black")
 
+
+
+
+# -----
 cat(model$report()$pfit,"\n")
 res <- data.frame(p = exp(model$report()$log_s50),
            p_est = rep(as.list(rep, what = "Estimate")$`p`, length(model$report()$p)),

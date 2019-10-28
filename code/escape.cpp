@@ -12,20 +12,21 @@ Type objective_function<Type>::operator() ()
 {
   // DATA SECTION ----
   
-  DATA_INTEGER(model)     // model switch
-  DATA_INTEGER(nset)      // number of sets
-  DATA_INTEGER(nlen)      // number of length bins in the model  
-  DATA_VECTOR(len)        // length bins [nlen]
+  DATA_INTEGER(slx_type)      // model switch (1 = symmetric selectivity, 2 = asymmetrical)
+  DATA_INTEGER(nset)          // number of sets
+  DATA_INTEGER(nlen)          // number of length bins in the model  
+  DATA_VECTOR(len)            // length bins [nlen]
   
-  DATA_VECTOR(npot_ctl)   // number of control pots fished by set [nset]
-  DATA_VECTOR(npot_exp)   // experimental pots 
+  DATA_VECTOR(npot_ctl)       // number of control pots fished by set [nset]
+  DATA_VECTOR(npot_exp)       // experimental pots 
   
-  DATA_MATRIX(ctl_dat)    // control pots: number of fish in each length bin by set [nlen, nset]
-  DATA_MATRIX(exp_dat)    // experimental pots
+  DATA_MATRIX(ctl_dat)        // control pots: number of fish in each length bin by set [nlen, nset]
+  DATA_MATRIX(exp_dat)        // experimental pots
   
-  DATA_INTEGER(mu_log_s90)  // prior mu for log_s90
-  DATA_INTEGER(mu_log_s10)  // prior mu for log_s10
-  DATA_INTEGER(log_sigma)   // prior sigma for log_s90 and log_s10
+  DATA_INTEGER(mu_log_s90)    // prior mu for log_s90
+  DATA_INTEGER(mu_log_s10)    // prior mu for log_s10
+  DATA_INTEGER(sig_log_s90)   // prior sigma for log_s90 
+  DATA_INTEGER(sig_log_s10)   // prior sigma for log_s10
   
   // PARAMETER SECTION ----
   
@@ -57,10 +58,10 @@ Type objective_function<Type>::operator() ()
   // Prior on log_s90 and log_s10
   Type prior_log_s90 = 0;
   Type prior_log_s10 = 0;
-  
-  prior_log_s90 = Type(0.5) * square(log_s90 - mu_log_s90) / square(log_sigma);
-  prior_log_s10 = Type(0.5) * square(log_s10 - mu_log_s10) / square(log_sigma);
-  
+
+  prior_log_s90 += Type(0.5) * square(log_s90 - mu_log_s90) / square(sig_log_s90);
+  prior_log_s10 += Type(0.5) * square(log_s10 - mu_log_s10) / square(sig_log_s10);
+
   // Selectivity matrix (slx): probability that a fish of length i in set j that
   // is caught in an escape-ring pot will be retained in the pot
   matrix<Type> slx(nlen,nset);
@@ -75,7 +76,7 @@ Type objective_function<Type>::operator() ()
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
         
-        switch(model) {
+        switch(slx_type) {
         
         case 1 : // Logistic with 2 parameters
           
@@ -128,7 +129,7 @@ Type objective_function<Type>::operator() ()
   Type nll = 0;             // Negative log likelihood
   nll += prior_log_s90;     // Add prior on log_s90
   
-  if (model == 2) {
+  if (slx_type == 2) {
     nll += prior_log_s10;   // Only add log_s10 prior if estimating 3rd parameter 
   }
   
@@ -156,6 +157,8 @@ Type objective_function<Type>::operator() ()
   REPORT(s90);
   REPORT(slx);
   REPORT(phi);
+  REPORT(prior_log_s90);
+  REPORT(prior_log_s10);
   
   return(nll);
   
