@@ -18,6 +18,14 @@ bio <- read_csv(paste0("data/pot_bio_", YEAR, ".csv")) %>%
                                    .default = NA,
                                    .ordered = TRUE))
 
+counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>% 
+  mutate(Treatment = derivedFactor("Control" = treatment == "Blue",
+                            "3.50 in" = treatment == "Purple",
+                            "3.75 in" = treatment == "Green",
+                            "4.00 in" = treatment == "Yellow",
+                            .default = NA,
+                            .ordered = TRUE))
+
 # Selectivity s90 prior
 sprior <- read_csv(paste0("output/theoretical_selectivity_", YEAR, ".csv"))
 sprior <- sprior %>% 
@@ -29,6 +37,13 @@ sprior <- sprior %>%
 
 # Remove data that don't have treatment data associated with them
 bio <- bio %>% filter(!is.na(Treatment))
+
+# Summarize counts
+
+tagged <- counts %>% 
+  group_by(set, Treatment, disposition) %>% 
+  dplyr::summarise(n = n()) %>% 
+  filter(disposition == "tagged")
 
 # Remove outliers
 
@@ -47,7 +62,7 @@ bio <- bio %>%
 # Reorganize data and get number of fish caught in experimental pots / control
 # pots for each length bin
 sum_df <- bio %>% 
-  group_by(Treatment, effort_no, length_bin, .drop=FALSE) %>% #
+  group_by(Treatment, effort_no, length_bin, .drop=FALSE) %>% # 
   dplyr::summarise(n = n()) %>% 
   ungroup()
 
@@ -60,6 +75,23 @@ sum_df <- sum_df %>%
   mutate(tot_n = exp_n + ctl_n,
          # proportion retained in experimental out of control
          p = exp_n / tot_n,
+         length_bin = as.numeric(as.character(length_bin)))
+
+# show P combined
+com <- bio %>% 
+  group_by(Treatment, length_bin, .drop=FALSE) %>% # 
+  dplyr::summarise(n = n()) %>% 
+  ungroup()
+
+com <- com %>%
+  filter(Treatment != "Control") %>% 
+  dplyr::rename(exp_n = n) %>% 
+  left_join(com %>% 
+              filter(Treatment == "Control") %>% 
+              select(length_bin, ctl_n = n)) %>% #
+  mutate(tot_n = exp_n + ctl_n,
+         # proportion retained in experimental out of control
+         combined_p = exp_n / tot_n,
          length_bin = as.numeric(as.character(length_bin)))
 
 ggplot(sum_df, aes(x = length_bin, y = p,
@@ -77,13 +109,12 @@ ggplot(sum_df, aes(x = length_bin, y = p,
 
 
 
-
 # remove_sets <- c(3,8,12,13,14,15,17)
 # trt %>% group_by(effort_no) %>% summarise(sum(tot_n))
 # trt <- trt %>% filter(!c(effort_no %in% remove_sets))
 
 # trt <- mutate(trt, Effort_no = factor(effort_no))
-# trt <- mutate(trt, effort_no = 1)
+
 
 # mod <- glm(p ~ length_bin, family = "binomial", weights = tot_n, data = trt)
 # mod <- glmer(p ~ length_bin + (1 | effort_no), family = "binomial", weights = tot_n, data = trt)
@@ -99,19 +130,43 @@ setwd("~/great_escape/code")
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
+df = sum_df;
+treatment = TREATMENT; 
+model = MODEL;
+# Priors
+#mu_log_s90 = mu_log_s90;
+mu_log_s10 = log(60);
+sig_log_s90 = log(2);
+sig_log_s10 = log(2);
+# Initial values ("i_"): Starting values from Table N.4
+# Model 1.3 and 1.2 in Haist et al. 2004
+i_log_s50 = log(65);
+i_log_s90 = log(69);
+i_log_s10 = log(60);
+# Lower ("l_") and upper ("u_") bounds
+l_log_s50 = log(55);
+u_log_s50 = log(65);
+l_log_s90 = log(65);
+u_log_s90 = log(80);
+l_log_s10 = log(40);
+u_log_s10 = log(50);
+l_log_delta = log(0.5);
+u_log_delta = log(1.5) 
+
 # Function to fit selectivity curves
-fit_slx <- function(treatment = TREATMENT, 
+fit_slx <- function(df = sum_df,
+                    treatment = TREATMENT, 
                     model = MODEL,
                     # Priors
                     #mu_log_s90 = mu_log_s90,
-                    mu_log_s10 = log(50),
-                    sig_log_s90 = log(4),
-                    sig_log_s10 = log(4),
+                    mu_log_s10 = log(60),
+                    sig_log_s90 = log(2),
+                    sig_log_s10 = log(2),
                     # Initial values ("i_"): Starting values from Table N.4
                     # Model 1.3 and 1.2 in Haist et al. 2004
-                    i_log_s50 = log(60),
+                    i_log_s50 = log(65),
                     i_log_s90 = log(69),
-                    i_log_s10 = log(50),
+                    i_log_s10 = log(60),
                     # Lower ("l_") and upper ("u_") bounds
                     l_log_s50 = log(55),
                     u_log_s50 = log(65),
@@ -123,15 +178,17 @@ fit_slx <- function(treatment = TREATMENT,
                     u_log_delta = log(1.5) 
                     ) {
 
-  trt <- filter(sum_df, Treatment == TREATMENT)  # Subset treatment
+  trt <- filter(df, Treatment == TREATMENT)  # Subset treatment
+  # trt <- mutate(trt, effort_no = 1)
   
   # Default data and switches
   data <- list(slx_type = 1, # model switch
                nset = length(unique(trt$effort_no)), # number of sets
                nlen = length(unique(trt$length_bin)), # number of length bins
-               len = sort(unique(trt$length_bin)), # vector of lengths
-               npot_ctl = rep(4, length(unique(trt$effort_no))), # vector of number of control pots in each set
-               npot_exp = rep(4, length(unique(trt$effort_no))), # vector of number of experimental pots in each set
+               len = sort(unique(trt$length_bin)), # vector of lengths for which there are data
+               fitted_len = seq(10, 100, 1), # vector of lengths for fitted values
+               npot_ctl = tagged %>% filter(Treatment == "Control") %>% pull(n), # vector of number of control pots in each set
+               npot_exp = tagged %>% filter(Treatment == TREATMENT) %>% pull(n), # vector of number of experimental pots in each set
                ctl_dat = matrix(trt$ctl_n, ncol = length(unique(trt$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
                exp_dat = matrix(trt$exp_n, ncol = length(unique(trt$effort_no))), # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
                # Priors
@@ -166,7 +223,8 @@ fit_slx <- function(treatment = TREATMENT,
   {
     map <- list(dummy = factor(NA), 
                 log_s10 = factor(NA),
-                log_delta = factor(NA))
+                log_delta = factor(NA))#,
+                # nu = rep(factor(NA), length(unique(trt$effort_no))))
     # Bound random effect between [-5, 5]
     lowbnd <- c(l_log_s50, l_log_s90, rep(-5, data$nset)) 
     uppbnd <- c(u_log_s50, u_log_s90, rep(5, data$nset)) 
@@ -180,7 +238,8 @@ fit_slx <- function(treatment = TREATMENT,
   {
     data$slx_type <- 2
     map <- list(dummy = factor(NA),
-                log_delta = factor(NA))
+                log_delta = factor(NA))#,
+                # nu = rep(factor(NA), length(unique(trt$effort_no))))
     lowbnd <- c(l_log_s50, l_log_s90, l_log_s10, rep(-5, data$nset)) 
     uppbnd <- c(u_log_s50, u_log_s90, u_log_s10, rep(5, data$nset)) 
     obj <- MakeADFun(data, parameters, map = map, 
@@ -192,7 +251,8 @@ fit_slx <- function(treatment = TREATMENT,
   if (model == 3)
   {
     map <- list(dummy = factor(NA), 
-                log_s10 = factor(NA))
+                log_s10 = factor(NA))#,
+                # nu = rep(factor(NA), length(unique(trt$effort_no))))
     lowbnd <- c(l_log_s50, l_log_s90, l_log_delta, rep(-5, data$nset)) 
     uppbnd <- c(u_log_s50, u_log_s90, u_log_delta, rep(5, data$nset)) 
     obj <- MakeADFun(data, parameters, map = map, 
@@ -204,7 +264,8 @@ fit_slx <- function(treatment = TREATMENT,
   if (model == 4)
   {
     data$slx_type <- 2
-    map <- list(dummy = factor(NA))
+    map <- list(dummy = factor(NA))#,
+                # nu = rep(factor(NA), length(unique(trt$effort_no))))
     lowbnd <- c(l_log_s50, l_log_s90, l_log_s10, l_log_delta, rep(-5, data$nset)) 
     uppbnd <- c(u_log_s50, u_log_s90, u_log_s10, u_log_delta, rep(5, data$nset)) 
     obj <- MakeADFun(data, parameters, map = map, 
@@ -221,7 +282,7 @@ fit_slx <- function(treatment = TREATMENT,
 }
 
 # User inputs
-TREATMENT <- "3.75 in"
+TREATMENT <- "4.00 in"
 
 # Model options
 # 0: Troubleshooting mode
@@ -229,17 +290,68 @@ TREATMENT <- "3.75 in"
 # 2: Fixed delta, asymmetric logistic
 # 3: Estimate delta, symmetric logistic
 # 4: Estimate delta, asymmetric logistic
-MODEL <- 4
+MODEL <- 3
 
 out <- fit_slx()
 
 out[[4]]
 summary(out[[4]])
-plot(out[[1]]$len, out[[2]]$report()$fit_slx, type = "l", col = "black")
+plot(out[[1]]$fitted_len, out[[2]]$report()$fit_slx, type = "l", col = "black",
+     xlab = "Length (cm)", ylab = "Selectivity")
+if(out[[1]]$slx_type == 1) 
+{
+  abline(h = c(0.5, 0.9), 
+         v = c(out[[2]]$report()$s50, out[[2]]$report()$s90),
+         col = "grey", lty = 2)
+} else {
+  abline(h = c(0.1, 0.5, 0.9), 
+         v = c(out[[2]]$report()$s10, out[[2]]$report()$s50, out[[2]]$report()$s90),
+         col = "grey", lty = 2)
+}
 
-data$model <- 1
+
+
+# Run escape2
+compile("escape2.cpp")
+dyn.load(dynlib("escape2"))
+
+TREATMENT <- "3.50 in"
+trt <- com %>% 
+  filter(Treatment %in% TREATMENT) %>% 
+  mutate(p = combined_p)
+# trt <- filter(sum_df, Treatment == TREATMENT)  # Subset treatment
+trt <- mutate(trt, effort_no = 1)
+
+data <- list(slx_type = 1, # model switch
+             nset = length(unique(trt$effort_no)), # number of sets
+             nlen = length(unique(trt$length_bin)), # number of length bins
+             len = sort(unique(trt$length_bin)), # vector of lengths for which there are data
+             fitted_len = seq(10, 100, 1), # vector of lengths for fitted values
+             npot_ctl = rep(4, length(unique(trt$effort_no))), # vector of number of control pots in each set
+             npot_exp = rep(4, length(unique(trt$effort_no))), # vector of number of experimental pots in each set
+             ctl_dat = matrix(trt$ctl_n, ncol = length(unique(trt$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
+             exp_dat = matrix(trt$exp_n, ncol = length(unique(trt$effort_no)))) # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
+
+a <- 13; b <- -0.22
+lengths <- seq(10, 100, 2)
+slx <- vector(length = length(lengths))
+for(i in 1:length(lengths)) {
+  slx[i] <- 1 / (1 + exp(a + b * lengths[i]))
+}
+plot(lengths, slx)
+parameters <- list(dummy = 0,
+                   alpha = a,
+                   beta = b,
+                   log_delta = log(1),
+                   nu = rep(0, length(unique(trt$effort_no))))
+
+map <- list(dummy = factor(NA),
+            # alpha = factor(NA),
+            log_delta = factor(NA))#,
+            # nu = rep(factor(NA), length(unique(trt$effort_no))))
+
 model <- MakeADFun(data, parameters, map = map, 
-                   DLL = "escape", silent = FALSE,
+                   DLL = "escape2", silent = FALSE,
                    hessian = TRUE, random = "nu") #
 # checking for minimization
 xx <- model$fn(model$env$last.par)
@@ -248,12 +360,30 @@ print(model$report())
 fit <- nlminb(model$par, model$fn, model$gr, 
               # control=list(eval.max=1000000,iter.max=100000),
               control=list(rel.tol=1e-12,
-                           eval.max=100000,iter.max=10000),
-              lower=lowbnd,upper=uppbnd)
+                           eval.max=100000,iter.max=10000))#,
+              # lower=lowbnd,upper=uppbnd)
 best <- model$env$last.par.best
 print(best)
 rep <- sdreport(model)
 print(rep)
+plot(data$fitted_len, model$report()$fit_slx, type = "l", col = "black", ylim = c(0,1))
+slx <- as.data.frame(model$report()$slx)
+names(slx) <- paste("set", 1:17, sep = "_")
+for(i in 1:17) {
+  tmp <- slx[,i]
+  points(data$len, tmp, add = TRUE, type = "l", col = "grey")
+}
+
+plot(data$fitted_len, model$report()$fit_phi, ylim = c(0,1), type = "l", col = "black")
+phi <- as.data.frame(model$report()$phi)
+names(phi) <- paste("set", 1:17, sep = "_")
+for(i in 1:17) {
+  tmp <- phi[,i]
+  points(data$len, tmp, add = TRUE, type = "l", col = "grey")
+}
+
+#-------
+
 
 (s50 <- model$report()$s50)
 (s10 <- model$report()$s10)
@@ -270,24 +400,24 @@ slx <- vector(length = length(lengths))
 for(i in 1:length(lengths)) {
   len <- lengths[i]
   
-  if(data$model == 1) {
-    if(len <= s50) {
-      delta_slx <- s50 - (2 * s50 - s90)
-    } else {
-      delta_slx <- s90 - s50
-    }
-  } else {
-    if(len <= s50) {
-      delta_slx <- s50 - s10
-    } else {
-      delta_slx <- s90 - s50
-    }
-  }
-  slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / delta_slx)))
+  slx[i] <- 
+  # if(data$model == 1) {
+  #   if(len <= s50) {
+  #     delta_slx <- s50 - (2 * s50 - s90)
+  #   } else {
+  #     delta_slx <- s90 - s50
+  #   }
+  # } else {
+  #   if(len <= s50) {
+  #     delta_slx <- s50 - s10
+  #   } else {
+  #     delta_slx <- s90 - s50
+  #   }
+  # }
+  # slx[i] <- 1 / (1 + exp(-2 * log(3) * ((len - s50) / delta_slx)))
 }
 plot(lengths, slx, col = "red")
-points(data$len, fit_slx, type = "l", col = "black")
-
+points(data$fitted_len, fit_slx, type = "l", col = "black")
 
 
 
