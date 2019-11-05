@@ -103,9 +103,9 @@ pred <- ciTools::add_pi(pred, fit_complex, alpha = 0.05, names = c("pi_lwr", "pi
 
 # Apply bias correction
 pred <- pred %>% 
-  mutate(fitted = exp(pred) * exp(0.5 * sigma(fit_int)^2),
-         lower = exp(pi_lwr) * exp(0.5 * sigma(fit_int)^2),
-         upper = exp(pi_upp) * exp(0.5 * sigma(fit_int)^2))
+  mutate(fitted = exp(pred) * exp(0.5 * sigma(fit_complex)^2),
+         lower = exp(pi_lwr) * exp(0.5 * sigma(fit_complex)^2),
+         upper = exp(pi_upp) * exp(0.5 * sigma(fit_complex)^2))
 
 p <- ggplot() +
   geom_point(data = grth, aes(x = length, y = girth), shape = 20) +
@@ -185,12 +185,12 @@ girth_se <- sigma(fit) # se of girth
 # summary(fit)
 # girth_se <- sigma(fit)
 
-pred_df <- data.frame(length = seq(30, 100, 1))
+pred_df <- data.frame(length = seq(30, 100, 0.01))
 pred_df$pred <- predict(fit, pred_df)
 
-# Assume mesh size diam of pots = 2.5 in until I can get better info from A.
-# Baldwin (email sent 2019-10-04)
-ring <- data.frame(ring_in = c(2.5, 3.5, 3.75, 4)) %>% 
+# A. Baldwin measured the mesh size diameter for me. Assume 73 mm. See issue 2
+# on github for documentation.
+ring <- data.frame(ring_in = c(73 / 25.4, 3.5, 3.75, 4)) %>% 
   mutate(ring_mm = ring_in * 25.4)
 
 # Assume girths are lognormally distributed. Simulate girth distribution at 1 cm
@@ -225,7 +225,7 @@ p <- ggplot(sel, aes(x = length, y = p, col = Treatment,
   scale_linetype_manual(values = c(1, 1, 2, 3)) +
   labs(x = "\nLength (cm)", y = "Proportion retained\n") +
   theme(legend.position = c(0.8, 0.3))
-
+p
 # Caption: Theoretical selectivity curves for control and escape ring treatments.
 ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".png"),
        dpi=300, height=3, width=6, units="in")
