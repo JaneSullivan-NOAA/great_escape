@@ -24,6 +24,16 @@ fsh_grth <- read_csv(paste0("data/fsh_bio_", YEAR, ".csv"))
 # Effort data 
 effort <- read_csv(paste0("data/pot_effort_", YEAR, ".csv"))
 
+# Total sablefish counts by depth and disposition (some pots in a set were
+# dumped due to processing time)
+counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>% 
+  mutate(Treatment = derivedFactor("Control" = treatment == "Blue",
+                                   "3.50 in" = treatment == "Purple",
+                                   "3.75 in" = treatment == "Green",
+                                   "4.00 in" = treatment == "Yellow",
+                                   .default = NA,
+                                   .ordered = TRUE))
+
 # Email sent to A. Baldwin 2019-10-01 about the NAs. See GitHub issue #1
 bio <- bio %>% filter(!is.na(Treatment))
 
@@ -217,6 +227,10 @@ names(sel) <- levels(bio$Treatment)
 sel <- sel %>% mutate(length = pred_df$length)
 sel <- data.table::melt(data = sel, id.vars = "length", variable.name = "Treatment", value.name = "p")
 
+# Save output, 90% selectivity used to inform prior
+write_csv(sel, paste0("output/theoretical_selectivity_", YEAR, ".csv"))
+
+sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
 p <- ggplot(sel, aes(x = length, y = p, col = Treatment, 
                      linetype = Treatment, group = Treatment, size = Treatment)) +
   geom_line() +
@@ -230,5 +244,102 @@ p
 ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".png"),
        dpi=300, height=3, width=6, units="in")
 
-# Save output, 90% selectivity used to inform prior
-write_csv(sel, paste0("output/theoretical_selectivity_", YEAR, ".csv"))
+# Theoretical w/ soak time ----
+
+# Filter out control selectivity
+ctl <- sel %>% filter(Treatment == "Control")
+
+# Probability of a fish finding the escape ring as a function of soak time:
+soak <- data.frame(hr = seq(1, 50, 1))
+x50 <- 20
+x95 <- 40
+soak <- soak %>% 
+  mutate(p = 1 / (1 + exp(-log(19) * (hr - x50) / (x95 - x50))))
+p <- ggplot(soak, aes(x = hr, y = p)) +
+  geom_line() +
+  ylim(c(0, 1)) +
+  labs(x = "\nSoak time (hr)",
+       y = "Probability of finding escape ring\n")
+p
+# Caption: Theoretical probability of a fish finding an escape ring as a function of soak time.
+ggsave(plot = p, filename = paste0("figures/escape_prob_soaktime.png"),
+       dpi=300, height=3, width=6, units="in")
+
+pred_df <- data.frame(length = seq(30, 100, 0.5))
+pred_df$pred <- predict(fit, pred_df)
+
+ring <- data.frame(ring_in = c(3.5, 3.75, 4)) %>% 
+  mutate(ring_mm = ring_in * 25.4)
+
+soak_times <- c(24, 48)
+
+sel <- array(data = NA,
+      dim = c(length(pred_df$pred), length(ring$ring_mm) + 1, length(soak_times)))
+
+nsim <- 5000
+
+for(i in 1:length(pred_df$pred)) {
+  for(j in 1:length(ring$ring_mm)) {  
+    for(k in 1:length(soak_times)) {  
+      
+      # Simulate girths based on variability (girth_se) in the girth-length
+      # relationship (lognormally distributed)
+      sim <- exp(rnorm(n = nsim, mean = pred_df$pred[i], sd = girth_se)) / pi
+      
+      # Determine which fish in the simulation are greater than the escape ring (1
+      # = greater than escape ring, would be retained by pot; 0 = smaller than
+      # escape ring and could escape)
+      tmp <- as.numeric(sim > ring$ring_mm[j])
+      escapees <- tmp[tmp == 0]
+      
+      # Use the probability of the escapees finding the escape ring
+      # given soak time to determine fraction of potential escapees that will
+      # remain in the pot due to soak time.
+      prob <- soak %>% filter(hr == soak_times[k]) %>% pull(p)
+      n <- round(prob * length(escapees), 0)
+      escapees[(n+1):length(escapees)] <- 1
+      
+      # If there are no potential escapees, assign selectivity as 1
+      if(n == 0) {
+        sel[i,j,k] <- 1 # equivalent to sum(tmp[tmp == 1]) / nsim
+      } else {
+        sel[i,j,k] <- sum(tmp[tmp == 1], escapees) / nsim
+      }
+      
+      # Soak time column
+      sel[,4,k] <- soak_times[k]
+    }
+  }
+}
+
+sel <- rbind(as.data.frame(sel[,,1]), as.data.frame(sel[,,2]))
+names(sel) <- c(levels(bio$Treatment)[2:4], "soak_time")
+sel <- sel %>% mutate(length = rep(pred_df$length, length(soak_times)))
+sel <- data.table::melt(data = sel, id.vars = c("soak_time", "length"), variable.name = "Treatment", value.name = "p")
+
+# Fish below a certain size can fit through the mesh. Adjust selectivity
+# obtained from including soak times accordingly
+ctl <- ctl %>% filter(length %in% seq(30, 100, 0.5))
+
+sel %>% 
+  # filter(soak_time == 24) %>% 
+  left_join(ctl %>% select(length, ctl_p = p), by = "length") %>% 
+  mutate(p = p * ctl_p) -> sel
+
+p <- ggplot() +
+  geom_line(data = ctl, aes(x = length, y = p, lty = Treatment), colour = "grey90", size = 1) +
+  geom_line(data = sel, aes(x = length, y = p, col = factor(soak_time), 
+                     linetype = Treatment, group = interaction(Treatment, soak_time)), size = 0.5) +
+  scale_colour_manual(values = c("grey70", "black")) +
+  scale_linetype_manual(values = c(1, 2, 3, 1)) +
+  labs(x = "\nLength (cm)", y = "Proportion retained\n", color = "Soak time (hr)") +
+  theme(legend.position = c(0.8, 0.45),
+        legend.key.width=unit(1.5,"line")) +
+  guides(linetype = guide_legend(override.aes = list(size = c(0.5, 0.5, 0.5, 1),
+                                                     colour = c("black", "black", "black", "grey90"))))
+        # legend.key.width=unit(0.5,"cm"))
+p
+
+# Caption: Theoretical selectivity curves for escape ring treatments as a function of soak time.
+ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", YEAR, ".png"),
+       dpi=300, height=3, width=6, units="in")
