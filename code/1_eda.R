@@ -130,6 +130,11 @@ ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".
 
 # Girth adjustments  ----
 
+# Summary of fish girths/weights
+fsh_grth %>% 
+  filter(!is.na(girth) | !is.na(weight)) %>% 
+  summarise(n = n())
+
 # Combine girths from survey and fishery
 comb_grth <- grth %>% 
   filter(Treatment == "Control") %>%
@@ -169,7 +174,7 @@ p <- ggplot() +
   scale_fill_manual(values = c("grey80", "grey70")) +
   labs(x = "\nLength (cm)", y = "Girth (mm)\n") +
   theme(legend.position = c(0.8, 0.2))
-
+p
 # Caption: A comparison of fitted values and prediction intervals for the
 # regression of girth on length for data collected during the survey in May
 # (grey triangles) and fishery in September and October (black circles).
@@ -233,6 +238,9 @@ write_csv(sel, paste0("output/theoretical_selectivity_", YEAR, ".csv"))
 sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
 p <- ggplot(sel, aes(x = length, y = p, col = Treatment, 
                      linetype = Treatment, group = Treatment, size = Treatment)) +
+  geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
+  geom_vline(xintercept = 62, col = "lightgrey", size = 0.4, lty = 2) +
+  geom_point(aes(x = 62, y = 0.5), col = "green", size = 1) +
   geom_line() +
   scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
   scale_size_manual(values = c(1.5, 0.7, 0.7, 0.7)) +
@@ -327,9 +335,12 @@ sel %>%
   mutate(p = p * ctl_p) -> sel
 
 p <- ggplot() +
+  # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
+  # geom_vline(xintercept = 62, col = "lightgrey", size = 0.4, lty = 2) +
   geom_line(data = ctl, aes(x = length, y = p, lty = Treatment), colour = "grey90", size = 1) +
   geom_line(data = sel, aes(x = length, y = p, col = factor(soak_time), 
                      linetype = Treatment, group = interaction(Treatment, soak_time)), size = 0.5) +
+  geom_point(aes(x = 62, y = 0.5), col = "green", size = 1.5) +
   scale_colour_manual(values = c("grey70", "black")) +
   scale_linetype_manual(values = c(1, 2, 3, 1)) +
   labs(x = "\nLength (cm)", y = "Proportion retained\n", color = "Soak time (hr)") +
@@ -337,9 +348,106 @@ p <- ggplot() +
         legend.key.width=unit(1.5,"line")) +
   guides(linetype = guide_legend(override.aes = list(size = c(0.5, 0.5, 0.5, 1),
                                                      colour = c("black", "black", "black", "grey90"))))
-        # legend.key.width=unit(0.5,"cm"))
+
 p
 
 # Caption: Theoretical selectivity curves for escape ring treatments as a function of soak time.
 ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", YEAR, ".png"),
        dpi=300, height=3, width=6, units="in")
+
+# Capture efficieny ----
+
+# Shapiro-Wilk test suggests CPUE (n salbefish per pot) is not normally
+# distributed, so we did a Kruskal-Wallis test, which is essentially a
+# nonparameteric one-way ANOVA
+shapiro.test(counts$n_sablefish) # H0: Data are normal
+kruskal.test(n_sablefish ~ Treatment, data = counts) # H0: means of the groups are the same
+
+ggplot(counts, aes(x = log(n_sablefish + 1), # Also tried: #n_sablefish, #x = log(n_sablefish + mean(n_sablefish) * 0.1), 
+                   colour = Treatment, fill = Treatment)) +
+  geom_density(alpha = 0.2) 
+
+p <- ggplot(counts, aes(x = Treatment, y = n_sablefish)) +
+  # If the notches don't overlap this suggests the means are different
+  geom_boxplot(notch = TRUE) +
+  labs(x = NULL, y = "Number of sablefish per pot\n",
+       title = "All sizes combined") +
+  theme(plot.title = element_text(hjust = 0.5))
+p
+
+counts %>% 
+  group_by(Treatment) %>% 
+  summarize(mean_cpue = mean(n_sablefish),
+            median_cpue = median(n_sablefish),
+            cpue_sd = sd(n_sablefish)) %>% 
+  kable()
+
+# Split up CPUE data by length. We have a smaller sample size than the combined Two categories: 1) < 62 cm (the L50 for females
+# in NSEI) and 2) >= 62 cm
+
+# write_csv(bio, paste0("data/bio_cleaned_", YEAR, ".csv"))
+
+head(bio)
+
+# Mean size by set
+bio %>% 
+  group_by(Treatment, effort_no) %>% 
+  summarize(n_sablefish = n(),
+            mean_length = mean(length),
+            sd_length = sd(length),
+            se = sd_length/sqrt(n_sablefish)) %>% 
+  group_by(Treatment) %>% 
+  summarize(mean_length = mean(mean_length),
+            se = mean(se))
+
+# Mean size overall
+bio %>% 
+  group_by(Treatment) %>% 
+  summarize(n_sablefish = n(),
+            mean_length = mean(length),
+            sd_length = sd(length),
+            se = sd_length/sqrt(n_sablefish))
+
+bio %>% 
+  mutate(Size_category = ifelse(length < 62, 
+                                "Sablefish < 62 cm", "Sablefish >= 62 cm")) %>% 
+  group_by(Treatment, effort_no) %>% 
+  summarise(prop_small = length(which(Size_category == "Sablefish < 62 cm")) /
+              n()) -> prop
+
+prop %>% rename(set = effort_no) %>% 
+  left_join(counts, by = c("Treatment", "set")) %>% 
+  mutate(`Sablefish < 62 cm` = round(prop_small * n_sablefish, 0),
+         `Sablefish >= 62 cm` = n_sablefish - `Sablefish < 62 cm`) %>% 
+  select(Treatment, `Sablefish < 62 cm`, `Sablefish >= 62 cm`) %>% 
+  melt(id.vars = c("Treatment"), variable.name = "Size_category", value.name = "n_sablefish") -> size_cpue
+
+p2 <- ggplot(size_cpue, aes(x = Treatment, y = n_sablefish)) +
+  # If the notches don't overlap this suggests the means are different
+  geom_boxplot(notch = TRUE) +
+  facet_wrap(~ Size_category, scales = "free_y") +
+  labs(x = NULL, y = "Number of sablefish per pot\n")
+p2
+
+plot_grid(p, p2, nrow = 2)
+
+# All significant
+tst <- size_cpue %>% 
+  filter(Size_category == "Sablefish < 62 cm") %>% 
+  mutate(Treatment = factor(Treatment, ordered = FALSE))
+kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
+dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
+dunn
+
+tst <- size_cpue %>% filter(Size_category == "Sablefish >= 62 cm") %>% 
+  mutate(Treatment = factor(Treatment, ordered = FALSE))
+kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
+dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
+dunn
+
+install.packages("FSA")
+library(FSA)
+?p.adjust
+tst_counts <- counts %>% mutate(Treatment = factor(Treatment, ordered = FALSE))
+dunn <- dunnTest(n_sablefish ~ Treatment, data = tst_counts, method = "bonferroni") # Bonferroni
+dunn
