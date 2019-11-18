@@ -114,7 +114,7 @@ n_tbl <- left_join(len_n, girths_n) %>%
 # Format
 n_tbl[c(2,3,4,5)] <- lapply(n_tbl[c(2,3,4,5)], prettyNum, big.mark=",")
 names(n_tbl) <- c("Treatment", "Fork length", "Girth", "Weight", "Stuck in escape ring")
-
+kable(n_tbl)
 ```
 
 There were `r prettyNum(pull(tot_discards, n), big.mark = ',')` fish that were lost, not tagged properly,  already tagged from another agency, dead or unmarketable due to sandflea bites or other damage, and were subsequently excluded from the remainder of the analysis. This reflected `r formatC(round(pull(tot_discards, n) / tot_fish * 100, 2))` of the total fish captured on the survey (`r prettyNum(tot_fish, big.mark = ",")`), resulting in a total of `r prettyNum(pull(len_totn, len_n), big.mark = ",")` fish lengths available for analysis (T). In addition to lengths, a subset of sablefish girths and weights were collected using a stratified random sampling design during the tagging survey. The fish girth, or circumference, was measured anterior to the dorsal fin and posterior to the pectoral and pelvic fins at fish's the thickest point and recorded to the nearest mm. Additionally, fish stuck in the esacape rings were documented and measured for girth and weight when possible.

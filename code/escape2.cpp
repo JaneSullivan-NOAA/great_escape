@@ -1,6 +1,6 @@
-// Escape ring model based on Haist et al. 2004 Appendix N
+// Escape ring model inspired by Arana et al., Fisheries Research (2011)
 // jane.sullivan1@alaska.gov
-// Last updated 2019-10-09
+// Last updated 2019-11-15
 
 #include <TMB.hpp>
 #include <numeric>
@@ -13,106 +13,200 @@ Type objective_function<Type>::operator() ()
   // DATA SECTION ----
   
   DATA_INTEGER(slx_type)      // model switch (1 = symmetric selectivity, 2 = asymmetrical)
-  DATA_INTEGER(nset)          // number of sets
-  DATA_INTEGER(nlen)          // number of length bins in the model  
-  DATA_VECTOR(len)            // length bins [nlen]
-  DATA_VECTOR(fitted_len)     // length vector for fitted values
+  DATA_INTEGER(nset)          // number of sets [i]
+  DATA_INTEGER(nlen)          // number of length bins in the model [j]
+  DATA_INTEGER(ntrt)          // number of experimental treatments [k]
+  DATA_VECTOR(len)            // length bins [j]
+  DATA_VECTOR(fit_len)        // length vector for fitted values
+  DATA_VECTOR(trt)            // escape ring treatment diameters [k]
   
-  DATA_VECTOR(npot_ctl)       // number of control pots fished by set [nset]
-  DATA_VECTOR(npot_exp)       // experimental pots 
+  DATA_VECTOR(npot_ctl)       // number of control pots sampled by set [j]
+  DATA_MATRIX(npot_trt)       // number of experimental treatment pots sampled by set [j,k]
   
-  DATA_MATRIX(ctl_dat)        // control pots: number of fish in each length bin by set [nlen, nset]
-  DATA_MATRIX(exp_dat)        // experimental pots
+  DATA_MATRIX(ctl_dat)        // control pots: number of fish in each length bin by set [i,j]
+  DATA_ARRAY(trt_dat)         // experimental pots: number of fish in each length bin by set and treatment [i,j,k]
+  
+  DATA_VECTOR(theor_s50)      // theoretical s50's [k]
+  DATA_VECTOR(theor_slp)      // theoretical slope of the logistic curve [k]
+  DATA_INTEGER(wt_s50)        // weight for penalty on s50
+  DATA_INTEGER(wt_slp)        // weight for penalty on slp
   
   // PARAMETER SECTION ----
   
   // Troubleshoot model
   PARAMETER(dummy);
   
-  // Selectivity curve parameters
-  PARAMETER(alpha);
-  PARAMETER(beta);
-  // PARAMETER(gamma);
+  // Selectivity curve parameters for each experimental treatmnet [k]
+  PARAMETER_VECTOR(alpha);
+  PARAMETER_VECTOR(beta);     
   
   // relative probability of entering a control pot (account for possible
   // difference in the degree to which fish are attracted to escape-ring and to
-  // control trap)
+  // control trap). This one parameter is shared between treatments.
   PARAMETER(log_delta);
+  Type delta = exp(log_delta);  
   
-  // Random effects for set [nset]
+  // Linear regression coefficients governing the relationship between length at
+  // 50% selectivity (s50) and escape ring diameter (trt): s50 ~ trt
+  PARAMETER(a1);
+  PARAMETER(b1);  
+  // Type(b1 = exp(log_b1));  // estimate in log space to assume positive slope? not sure this is necessary
+  
+  // Linear regression coefficients governing the relationship between the slope
+  // of the logistic selectivity curve (slx_slp) and escape ring diameter (trt):
+  // slx_slp ~ trt
+  PARAMETER(a2);
+  PARAMETER(b2);  
+  
+  // Random effects for set [j], shared between treatments.
   PARAMETER_VECTOR(nu);
-  
-  Type delta = exp(log_delta);
   
   // MODEL -----
   
-  // Selectivity matrix (slx): probability that a fish of length i in set j that
-  // is caught in an escape-ring pot will be retained in the pot
-  matrix<Type> slx(nlen,nset);
+  // i = length bin
+  // j = set
+  // k = treatment
+  
+  // Logistic selectivity model: probability that a fish of length i is caught
+  // in escape-ring treatment pot k will be retained in the pot
+  matrix<Type> slx(nlen,ntrt);
   slx.setZero();
   
   Type delta_slx = 0;
   
   for (int i = 0; i < nlen; i++) {
-    for (int j = 0; j < nset; j++) {
-      slx(i,j) = Type(1) / (Type(1) + exp(alpha + beta * len(i) + nu(j)));
+    for (int k = 0; k < ntrt; k++) {
+      slx(i,k) = Type(1) / (Type(1) + exp(-(alpha(k) + beta(k) * len(i))));
     }
   }
   // std::cout << "len \n" << len;
   // std::cout << "slx \n" << slx;
   
-  // Ratio (r) of the number of control pots to the number of escape-ring pots in set j:
-  vector<Type> r(nset);
+  // Efficiency ratio (r): ratio of control pots to escape-ring pots for
+  // treatment k in set j times the delta, with a random effect at the set level
+  // (nu):
+  matrix<Type> r(nset,ntrt);
   r.setZero();
-  
+
   for (int j = 0; j < nset; j++) {
-    r(j) = npot_ctl(j) / npot_exp(j);
+    for (int k = 0; k < ntrt; k++) {
+      r(j,k) = npot_ctl(j) / (npot_trt(j,k) * delta);
+    }
   }
-  
+
   // Given that a fish is caught and retained in one of the set j pots, the
   // probability that it is an escape ring pot is phi:
-  matrix<Type> phi(nlen,nset);
+  array<Type> phi(nlen,nset,ntrt);
   phi.setZero();
-  
+
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
-      phi(i,j) = slx(i,j) / (slx(i,j) + delta * r(j));
+      for (int k = 0; k < ntrt; k++) {
+        phi(i,j,k) = slx(i,k) / (slx(i,k) + r(j,k) + nu(j));
+      }
     }
   }
   // std::cout << phi << "\n phi";
-  
-  // Fitted values
-  int n_fitted = fitted_len.size();
-  vector<Type> fit_slx(n_fitted);
+
+  // FITTED VALUES
+
+  // Fitted selectivity
+  int nfit = fit_len.size();
+  matrix<Type> fit_slx(nfit,ntrt);
   fit_slx.setZero();
-  
-  for (int i = 0; i < n_fitted; i++) {
-    fit_slx(i) = Type(1) / (Type(1) + exp(alpha + beta * fitted_len(i)));
-  }
-  
-  vector<Type> fit_phi(n_fitted);
-  fit_phi.setZero();
-  
-  for (int i = 0; i < n_fitted; i++) {
-    fit_phi(i) = fit_slx(i) / (fit_slx(i) + delta);
-  }
-  
-  // OBJECTIVE FUNCTION -----
-  
-  // Negative log likelihood
-  Type nll = 0;
-  
-  for (int i = 0; i < nlen; i++) {
-    for (int j = 0; j < nset; j++) {
-      if(ctl_dat(i,j) + exp_dat(i,j) > 0)
-        nll -= exp_dat(i,j) * log(phi(i,j)) + ctl_dat(i,j) * log(Type(1) - phi(i,j));
+
+  for (int i = 0; i < nfit; i++) {
+    for (int k = 0; k < ntrt; k++) {
+      fit_slx(i,k) = Type(1) / (Type(1) + exp(-(alpha(k) + beta(k) * fit_len(i))));
     }
   }
-  
-  //Adjust nll for random effect
-  for (int j = 0; j < nset; j++) {
-    nll -= dnorm(nu(j), Type(0), Type(1), true);
+
+  // Fitted phi (probability of capture)
+  matrix<Type> fit_phi(nfit,ntrt);
+  fit_phi.setZero();
+
+  for (int i = 0; i < nfit; i++) {
+    for (int k = 0; k < ntrt; k++) {
+    fit_phi(i,k) = fit_slx(i,k) / (fit_slx(i,k) + delta);
+    }
   }
+
+  // Length at 25%, 50%, and 75%
+  vector<Type> s25(ntrt);
+  vector<Type> s50(ntrt);
+  vector<Type> s75(ntrt);
+
+  for (int k = 0; k < ntrt; k++) {
+    s25(k) = - (alpha(k) + log(Type(3))) / (beta(k));
+    s50(k) = - alpha(k) / beta(k);
+    s75(k) = - (alpha(k) - log(Type(3))) / (beta(k));
+  }
+
+  // Selection range (slx_rng, difference between s75 and s25); selection factor (slx_fct,
+  // s50 weighted by escape ring size, trt); slope of the logistic curve
+  // (slx_slp)
+  vector<Type> slx_rng(ntrt);
+  vector<Type> slx_fct(ntrt);
+  vector<Type> slx_slp(ntrt);
+
+  for (int k = 0; k < ntrt; k++) {
+    slx_rng(k) = s75(k) - s50(k);
+    slx_fct(k) = s50(k) * trt(k);
+    slx_slp(k) = beta(k) / Type(4);
+  }
+
+  // Linear regression between length at 50% selectivity and escape ring diameter
+  for (int k = 0; k < ntrt; k++) {
+    s50(k) = a1 + b1 * trt(k);
+  }
+
+  // Linear regression between slope of logistic selectivity curve and escape
+  // ring diameter
+  for (int k = 0; k < ntrt; k++) {
+    slx_slp(k) = a2 + b2 * trt(k);
+  }
+
+  // OBJECTIVE FUNCTION -----
+
+  // // Negative log likelihood
+  Type nll = 0;
+
+  for (int i = 0; i < nlen; i++) {
+    for (int j = 0; j < nset; j++) {
+      for (int k = 0; k < ntrt; k++) {
+        if(ctl_dat(i,j) + trt_dat(i,j,k) > 0)
+          nll -= trt_dat(i,j,k) * log(phi(i,j,k)) + ctl_dat(i,j) * log(Type(1) - phi(i,j,k));
+      }
+    }
+  }
+
+  //Adjust nll for random effect
+  Type set_effect = 0;
+
+  for (int j = 0; j < nset; j++) {
+    set_effect -= dnorm(nu(j), Type(0), Type(1), true);
+  }
+  nll += set_effect;
+
+
+  // What might the penalized likelihood be for a linear regression? One option
+  // is to use the parameter estimates as the observed and the estimates from
+  // the theoretical selectivity curves as the predicted, and use sum of squares
+  // as the nll
+
+  Type penl_s50 = 0;
+  Type penl_slp = 0;
+
+  for (int k = 0; k < ntrt; k++) {
+    penl_s50 += square(theor_s50(k) - s50(k));
+    penl_slp += square(theor_slp(k) - slx_slp(k));
+  }
+
+  penl_s50 *= wt_s50;  // weight for the s50 penalty
+  penl_slp *= wt_slp;  // weight for the slp penalty
+
+  nll += penl_s50;
+  nll += penl_slp;
   
   // Troubleshoot model
   // nll = dummy * dummy;
@@ -126,6 +220,16 @@ Type objective_function<Type>::operator() ()
   REPORT(phi);
   REPORT(fit_phi);
   REPORT(r);
+  REPORT(s50);
+  REPORT(s25);
+  REPORT(s75);
+  REPORT(slx_rng);
+  REPORT(slx_fct);
+  REPORT(slx_slp);
+  REPORT(set_effect);
+  REPORT(penl_s50);
+  REPORT(penl_slp);
+  REPORT(nll);
   
   return(nll);
   
