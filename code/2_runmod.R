@@ -155,17 +155,17 @@ com <- com %>%
          combined_p = exp_n / tot_n,
          length_bin = as.numeric(as.character(length_bin)))
 
-ggplot(sum_df, aes(x = length_bin, y = p,
+ggplot(sum_df %>% filter, aes(x = length_bin, y = p,
                    group =  Treatment, col = Treatment)) +
   geom_point() +
   facet_wrap(~Treatment) +
+  ylim(c(0,1)) +
   geom_smooth()
 
 ggplot(com, aes(x = length_bin, y = combined_p,
                    group =  Treatment, col = Treatment)) +
   geom_point() +
-  # geom_line() +
-  # facet_wrap(~Treatment) +
+  ylim(c(0,1)) +
   geom_smooth()
 
 # ggplot(sum_df, aes(x = length_bin, y = p,
@@ -205,6 +205,11 @@ ntrt_df <- counts %>%
   dplyr::summarise(ntrt = length(which(disposition == "tagged"))) %>% 
   dcast(set ~ Treatment)
 
+# Rescale lengths
+sprior %>% 
+  filter(length %in% unique(df$length_bin)) %>% 
+  mutate(scaled = scale(length)[,1]) -> sprior
+
 # Theoretical s50 and slope for each treatment
 s50_vec <- vector(length = 3)
 slp_vec <- vector(length = 3)
@@ -213,27 +218,37 @@ beta_vec <- vector(length = 3)
 
 for(i in 1:length(unique(df$Treatment))) {
   tmp <- sprior %>% filter(Treatment == unique(df$Treatment)[i])
-  fit <- glm(p ~ length, data = tmp, family = "quasibinomial")
+  fit <- glm(p ~ scaled, data = tmp, family = "quasibinomial")
   s50_vec[i] <- - coef(fit)[1] / coef(fit)[2]
   slp_vec[i] <- coef(fit)[2] / 4 # FLAG - negative?
   alpha_vec[i] <- coef(fit)[1]
   beta_vec[i] <- coef(fit)[2]
 }
 
-trt_len <- 2.54 * c(3.5, 3.75, 4)
+# Adjust other quantities for scaling
+sc_len <- scale(sort(unique(df$length_bin)))[,1]
+mu <- mean(unique(df$length_bin))
+sd <- sd(unique(df$length_bin))
+fit_len <- seq(10, 100, 1)
+sc_fit_len <- (mu - fit_len) / sd
 
+trt_len <- 2.54 * c(3.5, 3.75, 4) # diameter of escape ring treatments in cm
+sc_trt_len <- (mu - trt_len) / sd
+# mu - trt_len * sd # method to backtransform
+
+# Regress on raw, not scaled
 lm_s50 <- coef(lm(s50_vec ~ trt_len))
 lm_slp <- coef(lm(slp_vec ~ trt_len))
-plot(2.54 * c(3.5, 3.75, 4), s50_vec)
-plot(2.54 * c(3.5, 3.75, 4), slp_vec)
+plot(trt_len, s50_vec)
+plot(trt_len, slp_vec)
 
 data <- list(slx_type = 1, # model switch
              nset = length(unique(df$effort_no)), # number of sets
              nlen = length(unique(df$length_bin)), # number of length bins
              ntrt = length(unique(df$Treatment)), # number of treatments
-             len = sort(unique(df$length_bin)), # vector of lengths for which there are data
-             fit_len = seq(10, 100, 1), # vector of lengths for fitted values
-             trt = 2.54 * c(3.5, 3.75, 4), # vector of escape ring treatment diameters
+             len = sc_len, #sort(unique(df$length_bin)), # vector of lengths for which there are data
+             fit_len = sc_len, #sc_fit_len, #seq(10, 100, 1), # vector of lengths for fitted values
+             trt = trt_len,# 2.54 * c(3.5, 3.75, 4), # vector of escape ring treatment diameters
              npot_ctl = ntrt_df$Control, # vector of number of control pots in each set
              npot_trt = as.matrix(select(ntrt_df, matches(paste(unique(df$Treatment), collapse = "|")))), # matrix of number of experimental pots in each set [j,k]
              ctl_dat = matrix(df$ctl_n[df$Treatment == "3.50 in"], ncol = length(unique(df$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
@@ -243,79 +258,113 @@ data <- list(slx_type = 1, # model switch
                                      length(unique(df$Treatment)))),
              theor_s50 = s50_vec, # theoretical s50s
              theor_slp = slp_vec, # theoretical slopes
-             wt_s50 = 0.5,  # weight for selectivity penalties                            
-             wt_slp = 0) 
+             wt_s50 = 1,  # weight for selectivity penalties                            
+             wt_slp = 1) 
 
 parameters <- list(dummy = 0,
                    alpha = alpha_vec,
                    beta = beta_vec,
                    log_delta = log(1),
-                   nu = rep(0, length(unique(df$effort_no))),
                    a1 = lm_s50[1],
                    b1 = lm_s50[2],
                    a2 = lm_slp[1],
-                   b2 = lm_slp[2])
+                   b2 = lm_slp[2],
+                   nu = rep(0, length(unique(df$effort_no))))
+
+# Map
+map <- list(dummy = factor(NA)#,
+            # alpha = rep(factor(NA), 3),
+            # beta = rep(factor(NA), 3),
+            #log_delta = factor(NA)
+            # a1 = factor(NA),
+            # b1 = factor(NA),
+            # a2 = factor(NA),
+            # b2 = factor(NA),
+            # nu = rep(factor(NA), length(unique(df$effort_no)))
+)
 
 compile("escape2.cpp")
 dyn.load(dynlib("escape2"))
 
 # Bounds
-l_alpha <- rep(-45, length(unique(df$Treatment)))
-u_alpha <- rep(-30, length(unique(df$Treatment)))
+l_alpha <- rep(-45, length(unique(df$Treatment)));
+u_alpha <- rep(-30, length(unique(df$Treatment)));
 
-l_beta <- rep(0.45, length(unique(df$Treatment)))
-u_beta <- rep(0.8, length(unique(df$Treatment)))
+l_beta <- rep(0.45, length(unique(df$Treatment)));
+u_beta <- rep(0.8, length(unique(df$Treatment)));
 
-l_log_delta <- log(0.5)
-u_log_delta <- log(1.5)
+l_log_delta <- log(0.5);
+u_log_delta <- log(1.5);
+
+l_a1 <- 0.0001;
+u_a1 <- 5;
+l_b1 <- 0.0001;
+u_b1 <- 15;
+l_a2 <- 0;
+u_a2 <- 5;
+l_b2 <- -5;
+u_b2 <- -0.0001;
 
 l_nu <- rep(-5, data$nset)
 u_nu <- rep(5, data$nset)
-l_a1 <- 0.0001
-u_a1 <- 5
-l_b1 <- 0.0001
-u_b1 <- 15
-l_a2 <- 0
-u_a2 <- 5
-l_b2 <- -5
-u_b2 <- -0.0001
-# lowbnd <- c(l_alpha, l_beta, l_log_delta, l_nu, l_a1, l_b1, l_a2, l_b2) 
-# uppbnd <- c(u_alpha, u_beta, u_log_delta, u_nu, u_a1, u_b1, u_a2, u_b2) 
+# lowbnd <- c(l_alpha, l_beta, l_log_delta, l_a1, l_b1, l_a2, l_b2, l_nu) 
+# uppbnd <- c(u_alpha, u_beta, u_log_delta, u_a1, u_b1, u_a2, u_b2, u_nu) 
 
 # Model 1: Assume fixed delta
-map <- list(dummy = factor(NA),#
-            # alpha = rep(factor(NA), 3),
-            # beta = rep(factor(NA), 3),
-            log_delta = factor(NA)#,
-            # nu = rep(factor(NA), length(unique(df$effort_no))),
-            # a1 = factor(NA),
-            # b1 = factor(NA),
-            # a2 = factor(NA),
-            # b2 = factor(NA)
-)
-lowbnd <- c(l_alpha, l_beta, l_log_delta, l_nu, l_a1, l_b1, l_a2, l_b2) 
-uppbnd <- c(u_alpha, u_beta, u_log_delta, u_nu, u_a1, u_b1, u_a2, u_b2) 
+map <- list(dummy = factor(NA),
+            log_delta = factor(NA))
+lowbnd <- c(l_alpha, l_beta, l_a1, l_b1, l_a2, l_b2, l_nu) 
+uppbnd <- c(u_alpha, u_beta, u_a1, u_b1, u_a2, u_b2, u_nu) 
+
+# Model 2: Assume fixed delta and no random effects
+# map <- list(dummy = factor(NA),#
+#             log_delta = factor(NA),
+#             nu = rep(factor(NA), length(unique(df$effort_no))))
+# lowbnd <- c(l_alpha, l_beta, l_a1, l_b1, l_a2, l_b2) 
+# uppbnd <- c(u_alpha, u_beta, u_a1, u_b1, u_a2, u_b2) 
 
 model <- MakeADFun(data, parameters, map = map, 
-                   DLL = "escape2", silent = FALSE,
+                   DLL = "escape2", silent = TRUE,
                    hessian = TRUE, random = "nu") #
 
 # checking for minimization
 xx <- model$fn(model$env$last.par)
 print(model$report())
-model$report()$s75
 
-fit <- nlminb(model$par, model$fn, model$gr,  
-              lower=lowbnd,upper=uppbnd)
+fit <- nlminb(model$par, model$fn, model$gr)#,  
+              # lower=lowbnd,upper=uppbnd)
 
 best <- model$env$last.par.best
 print(best)
 rep <- sdreport(model)
 print(rep)
 
+mu - model$report()$s50 * sd
 
+model$report()$slx
+model$report()$fit_phi
+phi <- as.data.frame(model$report()$fit_phi)
+names(phi) <- paste0(unique(df$Treatment))
+phi <- phi %>% mutate(length_bin = sort(unique(df$length_bin)))
+phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi")
 
+com %>% left_join(phi, by = c("Treatment", "length_bin")) %>% 
+  ggplot() +
+  geom_point(aes(x = length_bin, y = combined_p,
+                      group =  Treatment, col = Treatment)) +
+  # ylim(c(0,1)) +
+  geom_line(aes(x = length_bin, y = phi, group = Treatment, col = Treatment))
 
+slx <- as.data.frame(model$report()$fit_slx)
+names(slx) <- paste0(unique(df$Treatment))
+slx <- slx %>% mutate(length_bin = sort(unique(df$length_bin)))
+slx <- melt(data = slx, id.vars = "length_bin", variable.name = "Treatment", value.name = "slx")
+
+ggplot() +
+  # geom_point(aes(x = length_bin, y = combined_p,
+  #                group =  Treatment, col = Treatment)) +
+  ylim(c(0,1)) +
+  geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
 
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
