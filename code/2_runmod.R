@@ -198,6 +198,7 @@ setwd("~/great_escape/code")
 # treatments and has a global delta
 
 df <- sum_df
+df <- com
 
 # Number of pots per set that were sampled for each treatment
 ntrt_df <- counts %>% 
@@ -218,20 +219,26 @@ beta_vec <- vector(length = 3)
 
 for(i in 1:length(unique(df$Treatment))) {
   tmp <- sprior %>% filter(Treatment == unique(df$Treatment)[i])
-  fit <- glm(p ~ scaled, data = tmp, family = "quasibinomial")
+  # fit <- glm(p ~ scaled, data = tmp, family = "quasibinomial")
+  fit <- glm(p ~ length, data = tmp, family = "quasibinomial")
   s50_vec[i] <- - coef(fit)[1] / coef(fit)[2]
   slp_vec[i] <- coef(fit)[2] / 4 # FLAG - negative?
   alpha_vec[i] <- coef(fit)[1]
   beta_vec[i] <- coef(fit)[2]
 }
 
+plot(fitted(fit) ~ tmp$length)
+
+mu - (-0.8965366 * sd)
+
 # Adjust other quantities for scaling
-sc_len <- scale(sort(unique(df$length_bin)))[,1]
+len <- sort(unique(df$length_bin))
+sc_len <- scale(len)[,1]
 mu <- mean(unique(df$length_bin))
 sd <- sd(unique(df$length_bin))
 fit_len <- seq(10, 100, 1)
 sc_fit_len <- (mu - fit_len) / sd
-
+fit_len <- len
 trt_len <- 2.54 * c(3.5, 3.75, 4) # diameter of escape ring treatments in cm
 sc_trt_len <- (mu - trt_len) / sd
 # mu - trt_len * sd # method to backtransform
@@ -243,23 +250,23 @@ plot(trt_len, s50_vec)
 plot(trt_len, slp_vec)
 
 data <- list(slx_type = 1, # model switch
-             nset = length(unique(df$effort_no)), # number of sets
+             nset = 17, #length(unique(df$effort_no)), # number of sets
              nlen = length(unique(df$length_bin)), # number of length bins
              ntrt = length(unique(df$Treatment)), # number of treatments
-             len = sc_len, #sort(unique(df$length_bin)), # vector of lengths for which there are data
-             fit_len = sc_len, #sc_fit_len, #seq(10, 100, 1), # vector of lengths for fitted values
-             trt = trt_len,# 2.54 * c(3.5, 3.75, 4), # vector of escape ring treatment diameters
+             len = len, # vector of lengths for which there are data
+             fit_len = fit_len, #sc_fit_len, #seq(10, 100, 1), # vector of lengths for fitted values
+             trt = trt_len, # vector of escape ring treatment diameters
              npot_ctl = ntrt_df$Control, # vector of number of control pots in each set
              npot_trt = as.matrix(select(ntrt_df, matches(paste(unique(df$Treatment), collapse = "|")))), # matrix of number of experimental pots in each set [j,k]
-             ctl_dat = matrix(df$ctl_n[df$Treatment == "3.50 in"], ncol = length(unique(df$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
+             ctl_dat = matrix(df$ctl_n[df$Treatment == "3.50 in"], ncol = 1), #length(unique(df$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
              trt_dat = array(df$exp_n, # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
                              dim = c(length(unique(df$length_bin)),
                                      length(unique(df$effort_no)),
                                      length(unique(df$Treatment)))),
              theor_s50 = s50_vec, # theoretical s50s
              theor_slp = slp_vec, # theoretical slopes
-             wt_s50 = 1,  # weight for selectivity penalties                            
-             wt_slp = 1) 
+             wt_s50 = 100,  # weight for selectivity penalties                            
+             wt_slp = 100) 
 
 parameters <- list(dummy = 0,
                    alpha = alpha_vec,
@@ -272,14 +279,14 @@ parameters <- list(dummy = 0,
                    nu = rep(0, length(unique(df$effort_no))))
 
 # Map
-map <- list(dummy = factor(NA)#,
+map <- list(dummy = factor(NA),#
             # alpha = rep(factor(NA), 3),
             # beta = rep(factor(NA), 3),
             #log_delta = factor(NA)
-            # a1 = factor(NA),
-            # b1 = factor(NA),
-            # a2 = factor(NA),
-            # b2 = factor(NA),
+            a1 = factor(NA),
+            b1 = factor(NA),
+            a2 = factor(NA),
+            b2 = factor(NA)
             # nu = rep(factor(NA), length(unique(df$effort_no)))
 )
 
@@ -288,22 +295,22 @@ dyn.load(dynlib("escape2"))
 
 # Bounds
 l_alpha <- rep(-45, length(unique(df$Treatment)));
-u_alpha <- rep(-30, length(unique(df$Treatment)));
+u_alpha <- rep(-20, length(unique(df$Treatment)));
 
-l_beta <- rep(0.45, length(unique(df$Treatment)));
+l_beta <- rep(0.4, length(unique(df$Treatment)));
 u_beta <- rep(0.8, length(unique(df$Treatment)));
 
 l_log_delta <- log(0.5);
 u_log_delta <- log(1.5);
 
-l_a1 <- 0.0001;
+l_a1 <- 0.01;
 u_a1 <- 5;
-l_b1 <- 0.0001;
-u_b1 <- 15;
-l_a2 <- 0;
+l_b1 <- 0.01;
+u_b1 <- 10;
+l_a2 <- 0.01;
 u_a2 <- 5;
 l_b2 <- -5;
-u_b2 <- -0.0001;
+u_b2 <- -0.01;
 
 l_nu <- rep(-5, data$nset)
 u_nu <- rep(5, data$nset)
@@ -313,6 +320,7 @@ u_nu <- rep(5, data$nset)
 # Model 1: Assume fixed delta
 map <- list(dummy = factor(NA),
             log_delta = factor(NA))
+# map <- list(dummy = factor(NA))
 lowbnd <- c(l_alpha, l_beta, l_a1, l_b1, l_a2, l_b2, l_nu) 
 uppbnd <- c(u_alpha, u_beta, u_a1, u_b1, u_a2, u_b2, u_nu) 
 
@@ -331,33 +339,53 @@ model <- MakeADFun(data, parameters, map = map,
 xx <- model$fn(model$env$last.par)
 print(model$report())
 
-fit <- nlminb(model$par, model$fn, model$gr)#,  
-              # lower=lowbnd,upper=uppbnd)
+fit <- nlminb(model$par, model$fn, model$gr,  
+              lower=lowbnd,upper=uppbnd)
 
 best <- model$env$last.par.best
 print(best)
 rep <- sdreport(model)
 print(rep)
 
-mu - model$report()$s50 * sd
-
-model$report()$slx
+model$report()$fit_slx
 model$report()$fit_phi
 phi <- as.data.frame(model$report()$fit_phi)
 names(phi) <- paste0(unique(df$Treatment))
-phi <- phi %>% mutate(length_bin = sort(unique(df$length_bin)))
+phi <- phi %>% mutate(length_bin = fit_len)#sort(unique(df$length_bin)))
 phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi")
 
-com %>% left_join(phi, by = c("Treatment", "length_bin")) %>% 
-  ggplot() +
+com %>% 
+  left_join(phi, by = c("Treatment", "length_bin")) %>% 
+  mutate(resid = combined_p - phi) -> tmp
+  
+ggplot(tmp) +
   geom_point(aes(x = length_bin, y = combined_p,
                       group =  Treatment, col = Treatment)) +
   # ylim(c(0,1)) +
   geom_line(aes(x = length_bin, y = phi, group = Treatment, col = Treatment))
 
+ggplot(tmp, aes(x = length_bin, y = resid)) +
+  geom_hline(yintercept = 0, col = "grey", size = 1) +
+  geom_segment(aes(x = length_bin, xend = length_bin, y = 0, yend = resid),
+               size = 0.2, col = "grey") +
+  geom_point() +
+  facet_wrap(~Treatment)
+
+plot(sort(unique(df$length_bin)), model$report()$fit_phi[,1], type = "l", 
+     col = "black", xlab = "Length (cm)", ylab = "# Treatment / (# Control + # Treatment)", ylim = c(0,1))
+plot(fit_len, model$report()$fit_phi[,1], type = "l", 
+     col = "black", xlab = "Length (cm)", ylab = "# Treatment / (# Control + # Treatment)", ylim = c(0,1))
+
+phi <- as.data.frame(model$report()$phi[,,1])
+names(phi) <- paste("set", 1:17, sep = "_")
+for(i in 1:17) {
+  tmp <- phi[,i]
+  points(sort(unique(df$length_bin)), tmp, add = TRUE, type = "l", col = "grey")
+}
+
 slx <- as.data.frame(model$report()$fit_slx)
 names(slx) <- paste0(unique(df$Treatment))
-slx <- slx %>% mutate(length_bin = sort(unique(df$length_bin)))
+slx <- slx %>% mutate(length_bin = fit_len)# sort(unique(df$length_bin)))
 slx <- melt(data = slx, id.vars = "length_bin", variable.name = "Treatment", value.name = "slx")
 
 ggplot() +
@@ -365,6 +393,9 @@ ggplot() +
   #                group =  Treatment, col = Treatment)) +
   ylim(c(0,1)) +
   geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
+
+
+model$report()$s50
 
 compile("escape.cpp")
 dyn.load(dynlib("escape"))

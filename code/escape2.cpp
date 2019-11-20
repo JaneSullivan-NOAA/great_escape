@@ -69,14 +69,14 @@ Type objective_function<Type>::operator() ()
   
   // Logistic selectivity model: probability that a fish of length i is caught
   // in escape-ring treatment pot k will be retained in the pot
-  matrix<Type> slx(nlen,ntrt);
+  array<Type> slx(nlen,nset,ntrt);
   slx.setZero();
-  
-  Type delta_slx = 0;
-  
+
   for (int i = 0; i < nlen; i++) {
-    for (int k = 0; k < ntrt; k++) {
-      slx(i,k) = Type(1) / (Type(1) + exp(-(alpha(k) + beta(k) * len(i))));
+    for (int j = 0; j < nset; j++) {
+      for (int k = 0; k < ntrt; k++) {
+        slx(i,j,k) = Type(1) / (Type(1) + exp(-(alpha(k) + beta(k) * len(i) + nu(j))));
+      }
     }
   }
   // std::cout << "len \n" << len;
@@ -102,7 +102,7 @@ Type objective_function<Type>::operator() ()
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
       for (int k = 0; k < ntrt; k++) {
-        phi(i,j,k) = slx(i,k) / (slx(i,k) + r(j,k) + nu(j));
+        phi(i,j,k) = slx(i,j,k) / (slx(i,j,k) + r(j,k));
       }
     }
   }
