@@ -198,7 +198,7 @@ setwd("~/great_escape/code")
 # treatments and has a global delta
 
 df <- sum_df
-df <- com
+# df <- com
 
 # Number of pots per set that were sampled for each treatment
 ntrt_df <- counts %>% 
@@ -227,7 +227,7 @@ for(i in 1:length(unique(df$Treatment))) {
   beta_vec[i] <- coef(fit)[2]
 }
 
-plot(fitted(fit) ~ tmp$length)
+plot(fitted(fit) ~ tmp$scaled)
 
 mu - (-0.8965366 * sd)
 
@@ -250,7 +250,7 @@ plot(trt_len, s50_vec)
 plot(trt_len, slp_vec)
 
 data <- list(slx_type = 1, # model switch
-             nset = 17, #length(unique(df$effort_no)), # number of sets
+             nset = length(unique(df$effort_no)),#17, # # number of sets
              nlen = length(unique(df$length_bin)), # number of length bins
              ntrt = length(unique(df$Treatment)), # number of treatments
              len = len, # vector of lengths for which there are data
@@ -258,19 +258,21 @@ data <- list(slx_type = 1, # model switch
              trt = trt_len, # vector of escape ring treatment diameters
              npot_ctl = ntrt_df$Control, # vector of number of control pots in each set
              npot_trt = as.matrix(select(ntrt_df, matches(paste(unique(df$Treatment), collapse = "|")))), # matrix of number of experimental pots in each set [j,k]
-             ctl_dat = matrix(df$ctl_n[df$Treatment == "3.50 in"], ncol = 1), #length(unique(df$effort_no))), # control pots: matrix of number of fish caught by length bin (row) by set (col)
+             ctl_dat = matrix(df$ctl_n[df$Treatment == "3.50 in"], ncol = length(unique(df$effort_no))), #1), # # control pots: matrix of number of fish caught by length bin (row) by set (col)
              trt_dat = array(df$exp_n, # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
                              dim = c(length(unique(df$length_bin)),
                                      length(unique(df$effort_no)),
                                      length(unique(df$Treatment)))),
              theor_s50 = s50_vec, # theoretical s50s
              theor_slp = slp_vec, # theoretical slopes
-             wt_s50 = 100,  # weight for selectivity penalties                            
-             wt_slp = 100) 
+             wt_s50 = 1,  # weight for selectivity penalties                            
+             wt_slp = 1) 
 
 parameters <- list(dummy = 0,
-                   alpha = alpha_vec,
-                   beta = beta_vec,
+                   # alpha = alpha_vec,
+                   # beta = beta_vec,
+                   s50 = s50_vec,
+                   slp = slp_vec,
                    log_delta = log(1),
                    a1 = lm_s50[1],
                    b1 = lm_s50[2],
@@ -320,7 +322,7 @@ u_nu <- rep(5, data$nset)
 # Model 1: Assume fixed delta
 map <- list(dummy = factor(NA),
             log_delta = factor(NA))
-# map <- list(dummy = factor(NA))
+map <- list(dummy = factor(NA))
 lowbnd <- c(l_alpha, l_beta, l_a1, l_b1, l_a2, l_b2, l_nu) 
 uppbnd <- c(u_alpha, u_beta, u_a1, u_b1, u_a2, u_b2, u_nu) 
 
@@ -339,8 +341,8 @@ model <- MakeADFun(data, parameters, map = map,
 xx <- model$fn(model$env$last.par)
 print(model$report())
 
-fit <- nlminb(model$par, model$fn, model$gr,  
-              lower=lowbnd,upper=uppbnd)
+fit <- nlminb(model$par, model$fn, model$gr)#,  
+              # lower=lowbnd,upper=uppbnd)
 
 best <- model$env$last.par.best
 print(best)
@@ -395,7 +397,10 @@ ggplot() +
   geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
 
 
-model$report()$s50
+model$report()$penl_s50
+model$report()$penl_slp
+model$report()$prior_s0
+model$report()$prior_s100
 
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
