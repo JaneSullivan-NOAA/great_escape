@@ -1,6 +1,6 @@
-// Escape ring model based on Haist et al. 2004 Appendix N
+// Escape ring model inspired by Arana et al., Fisheries Research (2011)
 // jane.sullivan1@alaska.gov
-// Last updated 2019-10-09
+// Last updated 2019-11-15
 
 #include <TMB.hpp>
 #include <numeric>
@@ -12,175 +12,177 @@ Type objective_function<Type>::operator() ()
 {
   // DATA SECTION ----
   
-  DATA_INTEGER(slx_type)      // model switch (1 = symmetric selectivity, 2 = asymmetrical)
-  DATA_INTEGER(nset)          // number of sets
-  DATA_INTEGER(nlen)          // number of length bins in the model  
-  DATA_VECTOR(len)            // length bins [nlen]
-  DATA_VECTOR(fitted_len)     // length vector for fitted values
+  DATA_INTEGER(nset)          // number of sets [i]
+  DATA_INTEGER(nlen)          // number of length bins in the model [j]
+  DATA_INTEGER(ntrt)          // number of experimental treatments [k]
+  DATA_VECTOR(len)            // length bins [j]
+  DATA_VECTOR(fit_len)        // length vector for fitted values
+
+  DATA_VECTOR(npot_ctl)       // number of control pots sampled by set [j]
+  DATA_MATRIX(npot_trt)       // number of experimental treatment pots sampled by set [j,k]
   
-  DATA_VECTOR(npot_ctl)       // number of control pots fished by set [nset]
-  DATA_VECTOR(npot_exp)       // experimental pots 
+  DATA_MATRIX(ctl_dat)        // control pots: number of fish in each length bin by set [i,j]
+  DATA_ARRAY(trt_dat)         // experimental pots: number of fish in each length bin by set and treatment [i,j,k]
   
-  DATA_MATRIX(ctl_dat)        // control pots: number of fish in each length bin by set [nlen, nset]
-  DATA_MATRIX(exp_dat)        // experimental pots
-  
-  DATA_INTEGER(mu_log_s90)    // prior mu for log_s90
-  DATA_INTEGER(mu_log_s10)    // prior mu for log_s10
-  DATA_INTEGER(sig_log_s90)   // prior sigma for log_s90 
-  DATA_INTEGER(sig_log_s10)   // prior sigma for log_s10
+  DATA_SCALAR(sigma_s0)       // Priors based on theoretical curves to consrain selectivity at slx = 0 and 1
+  DATA_SCALAR(sigma_s100)     
+  DATA_IVECTOR(s0_index)      // Index of length where theoretical curves were 0 and 1 for each treatment [k]
+  DATA_IVECTOR(s100_index)  
   
   // PARAMETER SECTION ----
   
   // Troubleshoot model
   PARAMETER(dummy);
   
-  // lengths where there is a 10, 50 and 90 percent probability that a fish will
-  // be retained in the escape-ring traps
-  PARAMETER(log_s50);
-  PARAMETER(log_s90);
-  PARAMETER(log_s10);
-
-  // relative probability of entering a control pot (account for possible
+  // Selectivity curve parameters for each experimental treatmnet [k]
+  PARAMETER_VECTOR(s50);
+  PARAMETER_VECTOR(slp);     
+  
+  // Relative probability of entering a control pot (account for possible
   // difference in the degree to which fish are attracted to escape-ring and to
-  // control trap)
+  // control trap). This one parameter is shared between treatments.
   PARAMETER(log_delta);
+  Type delta = exp(log_delta);  
   
-  // Random effects for set [nset]
+  // Random effects for set [j], shared between treatments.
   PARAMETER_VECTOR(nu);
-  
-  Type s50 = exp(log_s50);
-  Type s90 = exp(log_s90);
-  Type s10 = exp(log_s10);
-
-  Type delta = exp(log_delta);
   
   // MODEL -----
   
-  // Prior on log_s90 and log_s10
-  Type prior_log_s90 = 0;
-  Type prior_log_s10 = 0;
-
-  prior_log_s90 += Type(0.5) * square(log_s90 - mu_log_s90) / square(sig_log_s90);
-  prior_log_s10 += Type(0.5) * square(log_s10 - mu_log_s10) / square(sig_log_s10);
-
-  // Selectivity matrix (slx): probability that a fish of length i in set j that
-  // is caught in an escape-ring pot will be retained in the pot
-  matrix<Type> slx(nlen,nset);
+  // i = length bin
+  // j = set
+  // k = treatment
+  
+  // Logistic selectivity model: probability that a fish of length i is caught
+  // in escape-ring treatment pot k will be retained in the pot
+  array<Type> slx(nlen,nset,ntrt);
   slx.setZero();
 
-  Type delta_slx = 0;
-  
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
-        
-        switch(slx_type) {
-        
-        case 1 : // Logistic with 2 parameters
-          if (len(i) <= s50) 
-            delta_slx = s50 - (Type(2) * s50 - s90);
-          else 
-            delta_slx = s90 - s50;
-          break;
-          
-        case 2 : // Logistic with 3 parameters
-          if (len(i) <= s50) 
-            delta_slx = s50 - s10;
-          else 
-            delta_slx = s90 - s50;
-          break;
-        }
-      slx(i,j) = Type(1) / (Type(1) + exp( Type(-2) * log(Type(3)) * ((len(i) - s50 + nu(j)) / delta_slx)));
+      for (int k = 0; k < ntrt; k++) {
+        slx(i,j,k) = Type(1) / (Type(1) + exp(Type(-1.0) * slp(k) * (len(i) - s50(k)) + nu(j)));
+      }
     }
   }
   // std::cout << "len \n" << len;
   // std::cout << "slx \n" << slx;
   
-  // Fitted values
-  int n_fitted = fitted_len.size();
-  vector<Type> fit_slx(n_fitted);
-  fit_slx.setZero();
-  
-  for (int i = 0; i < n_fitted; i++) {
-
-    switch(slx_type) {
-
-    case 1 : // Logistic with 2 parameters
-
-      if (fitted_len(i) <= s50)
-        delta_slx = s50 - (Type(2) * s50 - s90);
-      else
-        delta_slx = s90 - s50;
-
-      break;
-
-    case 2 : // Logistic with 3 parameters
-
-      if (fitted_len(i) <= s50)
-        delta_slx = s50 - s10;
-      else
-        delta_slx = s90 - s50;
-
-      break;
-    }
-    fit_slx(i) = Type(1) / (Type(1) + exp( Type(-2) * log(Type(3)) * ((fitted_len(i) - s50) / delta_slx)));
-  }
-
-
-  // Efficiency ratio (r): ratio of control pots to escape-ring pots in set j times the delta:
-  vector<Type> r(nset);
+  // Efficiency ratio (r): ratio of control pots to escape-ring pots for
+  // treatment k in set j times the delta, with a random effect at the set level
+  // (nu):
+  matrix<Type> r(nset,ntrt);
   r.setZero();
 
   for (int j = 0; j < nset; j++) {
-    r(j) = npot_ctl(j) / npot_exp(j) * delta;
+    for (int k = 0; k < ntrt; k++) {
+      r(j,k) = npot_ctl(j) / (npot_trt(j,k) * delta);
+    }
   }
 
   // Given that a fish is caught and retained in one of the set j pots, the
   // probability that it is an escape ring pot is phi:
-  matrix<Type> phi(nlen,nset);
+  array<Type> phi(nlen,nset,ntrt);
   phi.setZero();
 
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
-      phi(i,j) = slx(i,j) / (slx(i,j) + r(j));
+      for (int k = 0; k < ntrt; k++) {
+        phi(i,j,k) = slx(i,j,k) / (slx(i,j,k) + r(j,k));
+      }
     }
   }
   // std::cout << phi << "\n phi";
-  
-  // OBJECTIVE FUNCTION -----
 
-  Type nll = 0;             // Negative log likelihood
-  nll += prior_log_s90;     // Add prior on log_s90
+  // FITTED VALUES
+
+  // Fitted selectivity  
+  matrix<Type> fit_slx(nlen,ntrt);
+  fit_slx.setZero();
   
-  if (slx_type == 2) {
-    nll += prior_log_s10;   // Only add log_s10 prior if estimating 3rd parameter 
+  for (int i = 0; i < nlen; i++) {
+    for (int k = 0; k < ntrt; k++) {
+      fit_slx(i,k) = Type(1) / (Type(1) + exp(Type(-1.0) * slp(k) * (len(i) - s50(k)))); 
+    }
   }
   
-  // Negative log likelihood
+  // Fit selectivity across a wider range of lengths for mcmc
+  int nfit = fit_len.size();
+  matrix<Type> full_slx(nfit,ntrt);
+  full_slx.setZero();
+
+  for (int i = 0; i < nfit; i++) {
+    for (int k = 0; k < ntrt; k++) {
+      full_slx(i,k) = Type(1) / (Type(1) + exp(Type(-1.0) * slp(k) * (fit_len(i) - s50(k)))); 
+    }
+  }
+  
+  // Fitted phi (probability of capture) 
+  matrix<Type> fit_phi(nlen,ntrt);
+  fit_phi.setZero();
+  
+  for (int i = 0; i < nlen; i++) {
+    for (int k = 0; k < ntrt; k++) {
+    fit_phi(i,k) = fit_slx(i,k) / (fit_slx(i,k) + delta);
+    }
+  }
+
+  // OBJECTIVE FUNCTION -----
+
+  // // Negative log likelihood
+  Type nll = 0;
+  
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
-      // if(ctl_dat(i,j) + exp_dat(i,j) > 0)
-        nll -= exp_dat(i,j) * log(phi(i,j)) + ctl_dat(i,j) * log(Type(1) - phi(i,j));
+      for (int k = 0; k < ntrt; k++) {
+        if(ctl_dat(i,j) + trt_dat(i,j,k) > 0)
+          nll -= trt_dat(i,j,k) * log(phi(i,j,k)) + ctl_dat(i,j) * log(Type(1) - phi(i,j,k));
+      }
     }
   }
 
   //Adjust nll for random effect
+  Type set_effect = 0;
+
   for (int j = 0; j < nset; j++) {
-    nll -= dnorm(nu(j), Type(0), Type(1), true);
+    set_effect -= dnorm(nu(j), Type(0), Type(1), true);
   }
+  nll += set_effect;
+
+  // Priors to constrain selectivity curve at 0 and 100
+  Type s0 = 0;
+  Type prior_s0 = 0;
+  Type s100 = 0;
+  Type prior_s100 = 0;
+  
+  for (int j = 0; j < nset; j++) {
+    for (int k = 0; k < ntrt; k++) {
+      s0 = fit_slx(s0_index(k),k);
+      s100 = fit_slx(s100_index(k),k);
+      prior_s0 += Type(0.5) * square(s0 - Type(0)) / square(sigma_s0);
+      prior_s100 += Type(0.5) * square(s100 - Type(1)) / square(sigma_s100);
+    }
+  }
+  nll += prior_s0;
+  nll += prior_s100;
   
   // Troubleshoot model
   // nll = dummy * dummy;
-    
+  
   // REPORT SECTION -----
   
   REPORT(fit_slx);
-  REPORT(s50); 
-  REPORT(s10);
-  REPORT(s90);
+  REPORT(s50);
+  REPORT(slp);
   REPORT(slx);
   REPORT(phi);
-  REPORT(prior_log_s90);
-  REPORT(prior_log_s10);
+  REPORT(fit_phi);
+  REPORT(r);
+  REPORT(set_effect);
+  REPORT(nll);
+  REPORT(prior_s0);
+  REPORT(prior_s100);
+  REPORT(full_slx);
   
   return(nll);
   
