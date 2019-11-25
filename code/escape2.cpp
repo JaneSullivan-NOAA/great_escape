@@ -28,11 +28,13 @@ Type objective_function<Type>::operator() ()
   
   DATA_VECTOR(theor_s50)      // theoretical s50's [k]
   DATA_VECTOR(theor_slp)      // theoretical slope of the logistic curve [k]
-  DATA_SCALAR(wt_s50)        // weight for penalty on s50
-  DATA_SCALAR(wt_slp)        // weight for penalty on slp
+  DATA_SCALAR(wt_s50)         // weight for penalty on s50
+  DATA_SCALAR(wt_slp)         // weight for penalty on slp
            
-  DATA_SCALAR(sigma_s0)      // Priors to consrain the selectivity curves at slx = 0 and 100
-  DATA_SCALAR(sigma_s100)    
+  DATA_SCALAR(sigma_s0)       // Priors to consrain the selectivity curves at slx = 0 and 100
+  DATA_SCALAR(sigma_s100)   
+  DATA_IVECTOR(s0_index)    
+  DATA_IVECTOR(s100_index)  
   
   // PARAMETER SECTION ----
   
@@ -52,14 +54,14 @@ Type objective_function<Type>::operator() ()
   // Linear regression coefficients governing the relationship between length at
   // 50% selectivity (s50) and escape ring diameter (trt): s50 ~ trt
   PARAMETER(a1);
-  PARAMETER(b1);  
-  // Type(b1 = exp(log_b1));  // estimate in log space to assume positive slope? not sure this is necessary
-  
-  // Linear regression coefficients governing the relationship between the slope
-  // of the logistic selectivity curve (slx_slp) and escape ring diameter (trt):
-  // slx_slp ~ trt
-  PARAMETER(a2);
-  PARAMETER(b2);  
+  PARAMETER(log_b1);
+  Type b1 = exp(log_b1);  // estimate in log space to assume positive slope? not sure this is necessary
+
+  // // Linear regression coefficients governing the relationship between the slope
+  // // of the logistic selectivity curve (slx_slp) and escape ring diameter (trt):
+  // // slx_slp ~ trt
+  // PARAMETER(a2);
+  // PARAMETER(b2);  
   
   // Random effects for set [j], shared between treatments.
   PARAMETER_VECTOR(nu);
@@ -113,23 +115,33 @@ Type objective_function<Type>::operator() ()
 
   // FITTED VALUES
 
-  // Fitted selectivity
-  int nfit = fit_len.size();
-  matrix<Type> fit_slx(nfit,ntrt);
-  fit_slx.setZero();
 
-  for (int i = 0; i < nfit; i++) {
+  
+  // Fitted selectivity  
+  matrix<Type> fit_slx(nlen,ntrt);
+  fit_slx.setZero();
+  
+  for (int i = 0; i < nlen; i++) {
     for (int k = 0; k < ntrt; k++) {
-      // fit_slx(i,k) = Type(1) / (Type(1) + exp(-(alpha(k) + beta(k) * fit_len(i))));
       fit_slx(i,k) = Type(1) / (Type(1) + exp(Type(-1.0) * slp(k) * (len(i) - s50(k)))); 
     }
   }
-
-  // Fitted phi (probability of capture)
-  matrix<Type> fit_phi(nfit,ntrt);
-  fit_phi.setZero();
+  
+  int nfit = fit_len.size();
+  matrix<Type> full_slx(nfit,ntrt);
+  full_slx.setZero();
 
   for (int i = 0; i < nfit; i++) {
+    for (int k = 0; k < ntrt; k++) {
+      full_slx(i,k) = Type(1) / (Type(1) + exp(Type(-1.0) * slp(k) * (fit_len(i) - s50(k)))); 
+    }
+  }
+  
+  // Fitted phi (probability of capture) 
+  matrix<Type> fit_phi(nlen,ntrt);
+  fit_phi.setZero();
+  
+  for (int i = 0; i < nlen; i++) {
     for (int k = 0; k < ntrt; k++) {
     fit_phi(i,k) = fit_slx(i,k) / (fit_slx(i,k) + delta);
     }
@@ -164,19 +176,17 @@ Type objective_function<Type>::operator() ()
     s50(k) = a1 + b1 * trt(k);
   }
 
-  // Linear regression between slope of logistic selectivity curve and escape
-  // ring diameter
-  for (int k = 0; k < ntrt; k++) {
-    slp(k) = a2 + b2 * trt(k);
-  }
+  // // Linear regression between slope of logistic selectivity curve and escape
+  // // ring diameter
+  // for (int k = 0; k < ntrt; k++) {
+  //   slp(k) = a2 + b2 * trt(k);
+  // }
 
   // OBJECTIVE FUNCTION -----
 
   // // Negative log likelihood
   Type nll = 0;
   
-  // Type<matrix> sum_trt
-
   for (int i = 0; i < nlen; i++) {
     for (int j = 0; j < nset; j++) {
       for (int k = 0; k < ntrt; k++) {
@@ -204,14 +214,14 @@ Type objective_function<Type>::operator() ()
 
   for (int k = 0; k < ntrt; k++) {
     penl_s50 += square(theor_s50(k) - s50(k));
-    penl_slp += square(theor_slp(k) - slp(k));
+    // penl_slp += square(theor_slp(k) - slp(k));
   }
 
   penl_s50 *= wt_s50;  // weight for the s50 penalty
-  penl_slp *= wt_slp;  // weight for the slp penalty
-
+  // penl_slp *= wt_slp;  // weight for the slp penalty
+  // 
   nll += penl_s50;
-  nll += penl_slp;
+  // nll += penl_slp;
 
   // Priors to constrain selectivity curve at 0 and 100
   Type s0 = 0;
@@ -221,8 +231,8 @@ Type objective_function<Type>::operator() ()
   
   for (int j = 0; j < nset; j++) {
     for (int k = 0; k < ntrt; k++) {
-      s0 = fit_slx(0,k);
-      s100 = fit_slx(nlen-1,k);
+      s0 = fit_slx(s0_index(k),k);
+      s100 = fit_slx(s100_index(k),k);
       prior_s0 += Type(0.5) * square(s0 - Type(0)) / square(sigma_s0);
       prior_s100 += Type(0.5) * square(s100 - Type(1)) / square(sigma_s100);
     }
@@ -251,11 +261,12 @@ Type objective_function<Type>::operator() ()
   // REPORT(slx_fct);
   // REPORT(slx_slp);
   REPORT(set_effect);
-  REPORT(penl_s50);
-  REPORT(penl_slp);
+  // REPORT(penl_s50);
+  // REPORT(penl_slp);
   REPORT(nll);
   REPORT(prior_s0);
   REPORT(prior_s100);
+  REPORT(full_slx);
   
   return(nll);
   

@@ -206,6 +206,22 @@ ntrt_df <- counts %>%
   dplyr::summarise(ntrt = length(which(disposition == "tagged"))) %>% 
   dcast(set ~ Treatment)
 
+# Priors on 100 retention:
+s100 <- filter(sprior, p == 1 & Treatment != "Control") %>% 
+  group_by(Treatment) %>% 
+  filter(length == min(length)) %>% 
+  select(Treatment, length)
+s0 <- filter(sprior, p < 0.01 & Treatment != "Control") %>%
+  group_by(Treatment) %>% 
+  filter(length == max(length)) %>% 
+  select(Treatment, length)
+
+len <- sort(unique(df$length_bin))
+
+# TMB index for s0 and s100 prior length (TMB indexing starts with 0)
+s0_index <- c(0, 3, 7)
+s100_index <- c(20, 24, 27)
+
 # Rescale lengths
 sprior %>% 
   filter(length %in% unique(df$length_bin)) %>% 
@@ -229,16 +245,13 @@ for(i in 1:length(unique(df$Treatment))) {
 
 plot(fitted(fit) ~ tmp$scaled)
 
-mu - (-0.8965366 * sd)
-
 # Adjust other quantities for scaling
-len <- sort(unique(df$length_bin))
 sc_len <- scale(len)[,1]
 mu <- mean(unique(df$length_bin))
 sd <- sd(unique(df$length_bin))
 fit_len <- seq(10, 100, 1)
 sc_fit_len <- (mu - fit_len) / sd
-fit_len <- len
+# fit_len <- len
 trt_len <- 2.54 * c(3.5, 3.75, 4) # diameter of escape ring treatments in cm
 sc_trt_len <- (mu - trt_len) / sd
 # mu - trt_len * sd # method to backtransform
@@ -254,7 +267,7 @@ data <- list(slx_type = 1, # model switch
              nlen = length(unique(df$length_bin)), # number of length bins
              ntrt = length(unique(df$Treatment)), # number of treatments
              len = len, # vector of lengths for which there are data
-             fit_len = fit_len, #sc_fit_len, #seq(10, 100, 1), # vector of lengths for fitted values
+             fit_len = seq(10, 100, 1), #fit_len, # vector of lengths for fitted values
              trt = trt_len, # vector of escape ring treatment diameters
              npot_ctl = ntrt_df$Control, # vector of number of control pots in each set
              npot_trt = as.matrix(select(ntrt_df, matches(paste(unique(df$Treatment), collapse = "|")))), # matrix of number of experimental pots in each set [j,k]
@@ -266,7 +279,11 @@ data <- list(slx_type = 1, # model switch
              theor_s50 = s50_vec, # theoretical s50s
              theor_slp = slp_vec, # theoretical slopes
              wt_s50 = 1,  # weight for selectivity penalties                            
-             wt_slp = 1) 
+             wt_slp = 1,
+             sigma_s0 = 0.4,  # priors to constrain selectivity at 0 and 1
+             sigma_s100 = 0.05,
+             s0_index = s0_index,
+             s100_index = s100_index) 
 
 parameters <- list(dummy = 0,
                    # alpha = alpha_vec,
@@ -275,16 +292,16 @@ parameters <- list(dummy = 0,
                    slp = slp_vec,
                    log_delta = log(1),
                    a1 = lm_s50[1],
-                   b1 = lm_s50[2],
-                   a2 = lm_slp[1],
-                   b2 = lm_slp[2],
+                   log_b1 = log(lm_s50[2]),
+                   # a2 = lm_slp[1],
+                   # b2 = lm_slp[2],
                    nu = rep(0, length(unique(df$effort_no))))
 
 # Map
 map <- list(dummy = factor(NA),#
             # alpha = rep(factor(NA), 3),
             # beta = rep(factor(NA), 3),
-            #log_delta = factor(NA)
+            # log_delta = factor(NA),
             a1 = factor(NA),
             b1 = factor(NA),
             a2 = factor(NA),
@@ -342,18 +359,16 @@ xx <- model$fn(model$env$last.par)
 print(model$report())
 
 fit <- nlminb(model$par, model$fn, model$gr)#,  
-              # lower=lowbnd,upper=uppbnd)
+# lower=lowbnd,upper=uppbnd)
 
 best <- model$env$last.par.best
 print(best)
 rep <- sdreport(model)
 print(rep)
 
-model$report()$fit_slx
-model$report()$fit_phi
 phi <- as.data.frame(model$report()$fit_phi)
 names(phi) <- paste0(unique(df$Treatment))
-phi <- phi %>% mutate(length_bin = fit_len)#sort(unique(df$length_bin)))
+phi <- phi %>% mutate(length_bin = len)#sort(unique(df$length_bin)))
 phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi")
 
 com %>% 
@@ -363,8 +378,8 @@ com %>%
 ggplot(tmp) +
   geom_point(aes(x = length_bin, y = combined_p,
                       group =  Treatment, col = Treatment)) +
-  # ylim(c(0,1)) +
-  geom_line(aes(x = length_bin, y = phi, group = Treatment, col = Treatment))
+  # geom_hline(yintercept = 0.5) +
+  geom_line(aes(x = length_bin, y = phi, group = Treatment, col = Treatment)) #+
 
 ggplot(tmp, aes(x = length_bin, y = resid)) +
   geom_hline(yintercept = 0, col = "grey", size = 1) +
@@ -372,6 +387,15 @@ ggplot(tmp, aes(x = length_bin, y = resid)) +
                size = 0.2, col = "grey") +
   geom_point() +
   facet_wrap(~Treatment)
+
+slx <- as.data.frame(model$report()$full_slx)
+names(slx) <- paste0(unique(df$Treatment))
+slx <- slx %>% mutate(length_bin = fit_len)# sort(unique(df$length_bin)))
+slx <- melt(data = slx, id.vars = "length_bin", variable.name = "Treatment", value.name = "slx")
+
+ggplot() +
+  ylim(c(0,1)) +
+  geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
 
 plot(sort(unique(df$length_bin)), model$report()$fit_phi[,1], type = "l", 
      col = "black", xlab = "Length (cm)", ylab = "# Treatment / (# Control + # Treatment)", ylim = c(0,1))
@@ -384,19 +408,6 @@ for(i in 1:17) {
   tmp <- phi[,i]
   points(sort(unique(df$length_bin)), tmp, add = TRUE, type = "l", col = "grey")
 }
-
-slx <- as.data.frame(model$report()$fit_slx)
-names(slx) <- paste0(unique(df$Treatment))
-slx <- slx %>% mutate(length_bin = fit_len)# sort(unique(df$length_bin)))
-slx <- melt(data = slx, id.vars = "length_bin", variable.name = "Treatment", value.name = "slx")
-
-ggplot() +
-  # geom_point(aes(x = length_bin, y = combined_p,
-  #                group =  Treatment, col = Treatment)) +
-  ylim(c(0,1)) +
-  geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
-
-
 model$report()$penl_s50
 model$report()$penl_slp
 model$report()$prior_s0
