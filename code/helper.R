@@ -176,3 +176,17 @@ fig <- captioner(prefix = "Figure")
 tbl <- captioner(prefix = "Table")
 appendix_tbl <- captioner(prefix = "Table") #Numbers tables in the appendix
 appendix_fig <- captioner(prefix = "Figure") #Numbers figures in the appendix
+
+#
+# Calculate marginal AIC for a fitted model
+# From: https://github.com/kaskr/TMB_contrib_R/blob/master/TMBhelper/R/TMBAIC.R (J. Thorson?)
+
+TMBAIC = function(opt, # output from nlminb or optim
+                p = 2, # penalty on additional fixed effects (default=2, for AIC)
+                n = Inf) { # sample size, for use in AICc calculation (default=Inf, for which AICc=AIC)
+  k = length(opt[["par"]])
+  if( all(c("par","objective") %in% names(opt)) ) negloglike = opt[["objective"]]
+  if( all(c("par","value") %in% names(opt)) ) negloglike = opt[["value"]]
+  Return = p*k + 2*negloglike + 2*k*(k+1)/(n-k-1)
+  return( Return )
+}

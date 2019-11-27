@@ -1,13 +1,14 @@
-# Simple logistic regression
+# Escape ring selectivity model
 # Jane Sullivan
 # jane.sullivan1@alaska.gov
-# Last updated 2019-10-07
+# Last updated 2019-11-26
 
 source("code/helper.r")
 library(TMB)
 library(cowplot)
 library(nimble) # inverse gamma prior
 library(broom) # tidy() clean up parameter estimates
+library(tmbstan)
 
 # Data ----
 YEAR <- 2019
@@ -171,39 +172,39 @@ u_log_delta <- log(1.5);
 
 l_nu <- rep(-5, data$nset)
 u_nu <- rep(5, data$nset)
-# lowbnd <- c(l_alpha, l_beta, l_log_delta, l_a1, l_b1, l_a2, l_b2, l_nu) 
-# uppbnd <- c(u_alpha, u_beta, u_log_delta, u_a1, u_b1, u_a2, u_b2, u_nu) 
 
 # Model 1: Assume fixed delta
 map <- list(dummy = factor(NA),
             log_delta = factor(NA))
-lowbnd <- c(l_alpha, l_beta, l_a1, l_b1, l_a2, l_b2, l_nu) 
-uppbnd <- c(u_alpha, u_beta, u_a1, u_b1, u_a2, u_b2, u_nu) 
 
 # Model 2: Estimate delta
 map <- list(dummy = factor(NA))
 # lowbnd <- c(l_alpha, l_beta, l_a1, l_b1, l_a2, l_b2) 
 # uppbnd <- c(u_alpha, u_beta, u_a1, u_b1, u_a2, u_b2) 
 
-model <- MakeADFun(data, parameters, map = map, 
+obj <- MakeADFun(data, parameters, map = map, 
                    DLL = "escape", silent = TRUE,
                    hessian = TRUE, random = "nu") #
 
 # checking for minimization
-xx <- model$fn(model$env$last.par)
-print(model$report())
+xx <- obj$fn(obj$env$last.par)
+print(obj$report())
 
-fit <- nlminb(model$par, model$fn, model$gr)#,  
+opt <- nlminb(obj$par, obj$fn, obj$gr)#,  
 # lower=lowbnd,upper=uppbnd)
 
-best <- model$env$last.par.best
+Mod1_AIC <- TMBAIC(opt)
+Mod2_AIC <- TMBAIC(opt)
+
+Mod1_AIC - Mod2_AIC
+best <- obj$env$last.par.best
 print(best)
-rep <- sdreport(model)
+rep <- sdreport(obj)
 print(rep)
 
-phi <- as.data.frame(model$report()$fit_phi)
+phi <- as.data.frame(obj$report()$fit_phi)
 names(phi) <- paste0(unique(df$Treatment))
-phi <- phi %>% mutate(length_bin = len)#sort(unique(df$length_bin)))
+phi <- phi %>% mutate(length_bin = len)
 phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi")
 
 com %>% 
@@ -223,7 +224,7 @@ ggplot(tmp, aes(x = length_bin, y = resid)) +
   geom_point() +
   facet_wrap(~Treatment)
 
-slx <- as.data.frame(model$report()$full_slx)
+slx <- as.data.frame(obj$report()$full_slx)
 names(slx) <- paste0(unique(df$Treatment))
 slx <- slx %>% mutate(length_bin = fit_len)# sort(unique(df$length_bin)))
 slx <- melt(data = slx, id.vars = "length_bin", variable.name = "Treatment", value.name = "slx")
@@ -232,16 +233,69 @@ ggplot() +
   ylim(c(0,1)) +
   geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
 
-plot(sort(unique(df$length_bin)), model$report()$fit_phi[,1], type = "l", 
+plot(sort(unique(df$length_bin)), obj$report()$fit_phi[,1], type = "l", 
      col = "black", xlab = "Length (cm)", ylab = "# Treatment / (# Control + # Treatment)", 
      ylim = c(0,0.6))
-phi <- as.data.frame(model$report()$phi[,,1])
+phi <- as.data.frame(obj$report()$phi[,,1])
 names(phi) <- paste("set", 1:17, sep = "_")
 for(i in 1:17) {
   tmp <- phi[,i]
   points(sort(unique(df$length_bin)), tmp, add = TRUE, type = "l", col = "grey")
 }
-model$report()$penl_s50
-model$report()$penl_slp
-model$report()$prior_s0
-model$report()$prior_s100
+obj$report()$penl_s50
+obj$report()$penl_slp
+obj$report()$prior_s0
+obj$report()$prior_s100
+
+# MCMC ----
+
+# fit <- tmbstan(obj, chains = 1)
+
+# Run in parallel with a init function
+cores <- parallel::detectCores()-1
+options(mc.cores = cores)
+init.fn <- function(){
+  list(s50 = sort(runif(3, 55, 70)), slp = sort(runif(3, 0.1, 0.2), decreasing = TRUE),
+       log_delta = log(rnorm(1, 1, 0.1)),
+       nu = rnorm(length(unique(df$effort_no))))}
+
+fit <- tmbstan(obj, chains = cores, open_progress = FALSE, init = init.fn)
+dev.new()
+# Pairs plot of the fixed effects
+pairs(fit, pars = names(obj$par))
+dev.off()
+
+
+## To explore the fit use shinystan
+library(shinystan)
+launch_shinystan(fit)
+
+## Can also get ESS and Rhat from rstan::monitor
+mon <- monitor(fit)
+max(mon$Rhat)
+min(mon$Tail_ESS)
+
+# Other methods provided by 'rstan'
+class(fit)
+methods(class="stanfit")
+
+# Trace plot
+dev.new()
+traceplot(fit, pars = names(obj$par), inc_warmup = FALSE)
+
+# Extract marginal posteriors easily
+post <- as.matrix(fit)
+hist(post[,'nu[1]'])                     # random effect
+hist(post[,'s50[1]'])                    # fixed effect
+dim(post)
+
+# Posterior for derived quantities. The last column in post is the log-posterior
+# density (lp__) and needs to be dropped
+obj$report(post[1,-ncol(post)]) 
+
+sd0 <- rep(NA, len = nrow(post))
+for(i in 1:nrow(post)){
+  r <- obj$report(post[i,-ncol(post)])
+  sd0[i] <- r$sd0
+}
+hist(sd0)

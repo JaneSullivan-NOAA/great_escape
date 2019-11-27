@@ -171,18 +171,15 @@ Type objective_function<Type>::operator() ()
   
   // REPORT SECTION -----
   
+  REPORT(full_slx);  
   REPORT(fit_slx);
-  REPORT(s50);
-  REPORT(slp);
   REPORT(slx);
+  REPORT(fit_phi);  
   REPORT(phi);
-  REPORT(fit_phi);
-  REPORT(r);
   REPORT(set_effect);
-  REPORT(nll);
   REPORT(prior_s0);
   REPORT(prior_s100);
-  REPORT(full_slx);
+  REPORT(nll);
   
   return(nll);
   
