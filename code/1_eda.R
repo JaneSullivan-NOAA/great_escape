@@ -7,16 +7,16 @@
 
 YEAR <- 2019 # study year(s)
 source("code/helper.r")
+library(FSA) # for Dunn test
 
 # Bio data
-bio <- read_csv(paste0("data/pot_bio_", YEAR, ".csv")) %>% 
-  filter(!is.na(length)) %>% 
-  mutate(Treatment = derivedFactor("Control" = Treatment == "99",
-                                   "3.50 in" = Treatment == "02",
-                                   "3.75 in" = Treatment == "01",
-                                   "4.00 in" = Treatment == "00",
-                                   .default = NA,
-                                   .ordered = TRUE))
+bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv")) %>% 
+  mutate(Treatment = derivedFactor("Control" = Treatment == "Control",
+                            "3.50 in" = Treatment == "3.50 in",
+                            "3.75 in" = Treatment == "3.75 in",
+                            "4.00 in" = Treatment == "4.00 in",
+                            .default = NA,
+                            .ordered = TRUE))
 
 # Fishery girth data (collected in order to account for grith seasonal adjustments)
 fsh_grth <- read_csv(paste0("data/fsh_bio_", YEAR, ".csv")) 
@@ -34,9 +34,6 @@ counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>%
                                    .default = NA,
                                    .ordered = TRUE))
 
-# Email sent to A. Baldwin 2019-10-01 about the NAs. See GitHub issue #1
-bio <- bio %>% filter(!is.na(Treatment))
-
 # Length frequency ----
 
 p <- bio %>% 
@@ -45,14 +42,15 @@ p <- bio %>%
   ggplot(aes(x = length, colour = Treatment, size = Treatment, linetype = Treatment)) + 
   geom_freqpoly() +
   scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
-  scale_size_manual(values = c(1.5, 0.7, 0.7, 0.7)) +
+  scale_size_manual(values = c(1.3, 0.7, 0.7, 0.7)) +
   scale_linetype_manual(values = c(1, 1, 2, 3)) +
   xlim(40, 90) +
-  labs(x = "\nLength (cm)", y = "Count\n") + 
+  labs(x = "Length (cm)", y = "Count") + 
   theme(legend.position = c(0.8, 0.7))
 
+p
 # Caption: Length frequency distribution by escape ring treatment.
-ggsave(plot = p, filename = paste0("figures/size_freq_", YEAR, ".png"), dpi=300, height=3, width=6, units="in")
+ggsave(plot = p, filename = paste0("figures/size_freq_", YEAR, ".pdf"), dpi=600, height=80, width=180, units="mm")
 
 # Girth outliers  ----
 
@@ -67,11 +65,11 @@ p <- ggplot(grth, aes(x = length, y = girth, col = Outlier, shape = Outlier)) +
   geom_point() +
   scale_colour_grey() +
   scale_shape_manual(values = c(20, 8)) +
-  labs(x = "\nLength (cm)", y = "Girth (mm)\n") +
+  labs(x = "Length (cm)", y = "Girth (mm)") +
   theme(legend.position = c(0.8, 0.2))
-
-ggsave(plot = p, filename = paste0("figures/girth_outliers_", YEAR, ".png"), 
-       dpi=300, height=3, width=6, units="in")
+p
+ggsave(plot = p, filename = paste0("figures/girth_outliers_", YEAR, ".pdf"), 
+       dpi=600, height=80, width=80, units="mm")
 
 grth <- grth %>% filter(Outlier != "Outlier") %>% 
   select(-Outlier)
@@ -80,10 +78,10 @@ grth <- grth %>% filter(Outlier != "Outlier") %>%
 p <- ggplot(grth, aes(x = length, y = girth)) +
   geom_point(shape = 20) +
   facet_wrap(~ Treatment) +
-  labs(x = "\nLength (cm)", y = "Girth (mm)\n")
-
-ggsave(plot = p, filename = paste0("figures/girth_bytreatment_", YEAR, ".png"), 
-       dpi=300, height=5, width=6, units="in")
+  labs(x = "Length (cm)", y = "Girth (mm)")
+p
+ggsave(plot = p, filename = paste0("figures/girth_bytreatment_", YEAR, ".pdf"), 
+       dpi=600, height=180, width=180, units="mm")
 
 # Girth by treatment ----
 
@@ -123,10 +121,10 @@ p <- ggplot() +
               alpha = 0.6, fill = "grey70") +
   geom_line(data = pred, aes(x = length, y = fitted, group = Treatment)) +
   facet_wrap(~ Treatment) +
-  labs(x = "\nLength (cm)", y = "Girth (mm)\n") 
+  labs(x = "Length (cm)", y = "Girth (mm)") 
 p
-ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".png"), 
-       dpi=300, height=5, width=6, units="in")
+ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".pdf"), 
+       dpi=600, height=180, width=180, units="mm")
 
 # Girth adjustments  ----
 
@@ -172,14 +170,14 @@ p <- ggplot() +
   geom_line(data = pred, aes(x = length, y = fitted, group = Source, colour = Source, linetype = Source), size = 1) +
   scale_colour_manual(values = c("grey10", "grey60")) +
   scale_fill_manual(values = c("grey80", "grey70")) +
-  labs(x = "\nLength (cm)", y = "Girth (mm)\n") +
+  labs(x = "Length (cm)", y = "Girth (mm)") +
   theme(legend.position = c(0.8, 0.2))
 p
 # Caption: A comparison of fitted values and prediction intervals for the
 # regression of girth on length for data collected during the survey in May
 # (grey triangles) and fishery in September and October (black circles).
-ggsave(plot = p, filename = paste0("figures/girth_bysource_", YEAR, ".png"), 
-       dpi=300, height=3, width=6, units="in")
+ggsave(plot = p, filename = paste0("figures/girth_bysource_", YEAR, ".pdf"), 
+       dpi=600, height=180, width=180, units="mm")
 
 # Theoretical selectivity curves ----
 
@@ -240,17 +238,18 @@ p <- ggplot(sel, aes(x = length, y = p, col = Treatment,
                      linetype = Treatment, group = Treatment, size = Treatment)) +
   geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
   geom_vline(xintercept = 62, col = "lightgrey", size = 0.4, lty = 2) +
-  geom_point(aes(x = 62, y = 0.5), col = "green", size = 1) +
+  # geom_point(aes(x = 62, y = 0.5), col = "green", size = 1) +
   geom_line() +
   scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
   scale_size_manual(values = c(1.5, 0.7, 0.7, 0.7)) +
   scale_linetype_manual(values = c(1, 1, 2, 3)) +
-  labs(x = "\nLength (cm)", y = "Proportion retained\n") +
-  theme(legend.position = c(0.8, 0.3))
+  labs(x = "Length (cm)", y = "Proportion retained") +
+  theme(legend.position = c(0.8, 0.3)) +
+  xlim(c(35,85))
 p
 # Caption: Theoretical selectivity curves for control and escape ring treatments.
-ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".png"),
-       dpi=300, height=3, width=6, units="in")
+ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".pdf"),
+       dpi=600, height=80, width=80, units="mm")
 
 # Theoretical w/ soak time ----
 
@@ -270,8 +269,8 @@ p <- ggplot(soak, aes(x = hr, y = p)) +
        y = "Probability of finding escape ring\n")
 p
 # Caption: Theoretical probability of a fish finding an escape ring as a function of soak time.
-ggsave(plot = p, filename = paste0("figures/escape_prob_soaktime.png"),
-       dpi=300, height=3, width=6, units="in")
+ggsave(plot = p, filename = paste0("figures/escape_prob_soaktime.pdf"),
+       dpi=600, height=80, width=80, units="mm")
 
 pred_df <- data.frame(length = seq(30, 100, 0.5))
 pred_df$pred <- predict(fit, pred_df)
@@ -340,10 +339,10 @@ p <- ggplot() +
   geom_line(data = ctl, aes(x = length, y = p, lty = Treatment), colour = "grey90", size = 1) +
   geom_line(data = sel, aes(x = length, y = p, col = factor(soak_time), 
                      linetype = Treatment, group = interaction(Treatment, soak_time)), size = 0.5) +
-  geom_point(aes(x = 62, y = 0.5), col = "green", size = 1.5) +
+  # geom_point(aes(x = 62, y = 0.5), col = "green", size = 1.5) +
   scale_colour_manual(values = c("grey70", "black")) +
   scale_linetype_manual(values = c(1, 2, 3, 1)) +
-  labs(x = "\nLength (cm)", y = "Proportion retained\n", color = "Soak time (hr)") +
+  labs(x = "Length (cm)", y = "Proportion retained", color = "Soak time (hr)") +
   theme(legend.position = c(0.8, 0.45),
         legend.key.width=unit(1.5,"line")) +
   guides(linetype = guide_legend(override.aes = list(size = c(0.5, 0.5, 0.5, 1),
@@ -352,8 +351,8 @@ p <- ggplot() +
 p
 
 # Caption: Theoretical selectivity curves for escape ring treatments as a function of soak time.
-ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", YEAR, ".png"),
-       dpi=300, height=3, width=6, units="in")
+ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", YEAR, ".pdf"),
+       dpi=600, height=80, width=180, units="mm")
 
 # Capture efficieny ----
 
@@ -362,17 +361,20 @@ ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", 
 # nonparameteric one-way ANOVA
 shapiro.test(counts$n_sablefish) # H0: Data are normal
 kruskal.test(n_sablefish ~ Treatment, data = counts) # H0: means of the groups are the same
+tst_counts <- counts %>% mutate(Treatment = factor(Treatment, ordered = FALSE))
+# Use Dunn test for adhoc multiple comparisons with a Bonferroni adjusted
+# p-value (P.adj)
+dunn <- dunnTest(n_sablefish ~ Treatment, data = tst_counts, method = "bonferroni")
+dunn
 
-ggplot(counts, aes(x = log(n_sablefish + 1), # Also tried: #n_sablefish, #x = log(n_sablefish + mean(n_sablefish) * 0.1), 
-                   colour = Treatment, fill = Treatment)) +
-  geom_density(alpha = 0.2) 
-
-p <- ggplot(counts, aes(x = Treatment, y = n_sablefish)) +
+p <- counts %>% 
+  mutate(facet = "All sizes combined") %>% 
+  ggplot(aes(x = Treatment, y = n_sablefish)) +
   # If the notches don't overlap this suggests the means are different
   geom_boxplot(notch = TRUE) +
-  labs(x = NULL, y = "Number of sablefish per pot\n",
-       title = "All sizes combined") +
-  theme(plot.title = element_text(hjust = 0.5))
+  labs(x = NULL, y = "Number of sablefish per pot") +
+  theme(plot.title = element_text(hjust = 0.5)) +
+  facet_wrap(~facet)
 p
 
 counts %>% 
@@ -382,12 +384,8 @@ counts %>%
             cpue_sd = sd(n_sablefish)) %>% 
   kable()
 
-# Split up CPUE data by length. We have a smaller sample size than the combined Two categories: 1) < 62 cm (the L50 for females
-# in NSEI) and 2) >= 62 cm
-
-# write_csv(bio, paste0("data/bio_cleaned_", YEAR, ".csv"))
-
-head(bio)
+# Split up CPUE data by length. We have a smaller sample size than the combined
+# Two categories: 1) < 62 cm (the L50 for females in NSEI) and 2) >= 62 cm
 
 # Mean size by set
 bio %>% 
@@ -408,46 +406,38 @@ bio %>%
             sd_length = sd(length),
             se = sd_length/sqrt(n_sablefish))
 
-bio %>% 
+size_cpue <- bio %>% 
+  # Remove "stuck" fish b/c they cannot be attributed to a specific pot
+  filter(pot_no != 99) %>% 
   mutate(Size_category = ifelse(length < 62, 
                                 "Sablefish < 62 cm", "Sablefish >= 62 cm")) %>% 
-  group_by(Treatment, effort_no) %>% 
-  summarise(prop_small = length(which(Size_category == "Sablefish < 62 cm")) /
-              n()) -> prop
-
-prop %>% rename(set = effort_no) %>% 
-  left_join(counts, by = c("Treatment", "set")) %>% 
-  mutate(`Sablefish < 62 cm` = round(prop_small * n_sablefish, 0),
-         `Sablefish >= 62 cm` = n_sablefish - `Sablefish < 62 cm`) %>% 
-  select(Treatment, `Sablefish < 62 cm`, `Sablefish >= 62 cm`) %>% 
-  melt(id.vars = c("Treatment"), variable.name = "Size_category", value.name = "n_sablefish") -> size_cpue
+  group_by(Treatment, effort_no, pot_no, Size_category) %>% 
+  summarize(n_sablefish = n()) 
 
 p2 <- ggplot(size_cpue, aes(x = Treatment, y = n_sablefish)) +
   # If the notches don't overlap this suggests the means are different
   geom_boxplot(notch = TRUE) +
   facet_wrap(~ Size_category, scales = "free_y") +
-  labs(x = NULL, y = "Number of sablefish per pot\n")
+  labs(x = NULL, y = "Number of sablefish per pot")
 p2
 
 plot_grid(p, p2, nrow = 2)
 
+ggsave(filename = paste0("figures/cpue_", YEAR, ".pdf"),
+       dpi=600, height=180, width=180, units="mm")
+
 # All significant
 tst <- size_cpue %>% 
+  ungroup() %>% 
   filter(Size_category == "Sablefish < 62 cm") %>% 
   mutate(Treatment = factor(Treatment, ordered = FALSE))
 kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
 dunn
 
-tst <- size_cpue %>% filter(Size_category == "Sablefish >= 62 cm") %>% 
+tst <- size_cpue %>% ungroup() %>% 
+  filter(Size_category == "Sablefish >= 62 cm") %>% 
   mutate(Treatment = factor(Treatment, ordered = FALSE))
 kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
-dunn
-
-install.packages("FSA")
-library(FSA)
-?p.adjust
-tst_counts <- counts %>% mutate(Treatment = factor(Treatment, ordered = FALSE))
-dunn <- dunnTest(n_sablefish ~ Treatment, data = tst_counts, method = "bonferroni") # Bonferroni
 dunn

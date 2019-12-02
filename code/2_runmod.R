@@ -6,22 +6,14 @@
 source("code/helper.r")
 library(TMB)
 library(cowplot)
-library(nimble) # inverse gamma prior
+# library(nimble) # inverse gamma prior
 library(broom) # tidy() clean up parameter estimates
-library(tmbstan)
+library(tmbstan) # run mcmc
+library(shinystan) # awesome diagnostic tool
 
 # Data ----
 YEAR <- 2019
-bio <- read_csv(paste0("data/pot_bio_", YEAR, ".csv")) %>% 
-  filter(!is.na(length)) %>% 
-  mutate(Treatment = derivedFactor("Control" = Treatment == "99",
-                                   "3.50 in" = Treatment == "02",
-                                   "3.75 in" = Treatment == "01",
-                                   "4.00 in" = Treatment == "00",
-                                   .default = NA,
-                                   .ordered = TRUE))
-# Remove data that don't have treatment data associated with them
-bio <- bio %>% filter(!is.na(Treatment))
+bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv"))
 
 # Total sablefish counts by depth and disposition (some pots in a set were
 # dumped due to processing time)
@@ -42,27 +34,28 @@ tagged <- counts %>%
   dplyr::summarise(n = n()) %>% 
   filter(disposition == "tagged")
 
-
 # Length bins
 
 # Bin structure used in Haist et al 2004. Examine lengths for which we believe
 # the control pot is 100% selected
-bio <- bio %>% filter(!c(length < 50)) %>%
-mutate(length2 = ifelse(length < 51, 51, ifelse(length > 79, 79, length)),
-length_bin = cut(length2, breaks = seq(50.9, 79.9, 1), labels = paste(seq(51,
-79, 1)))) %>% select(-length2)
+bio <- bio %>% 
+  filter(!c(length < 50)) %>%
+  mutate(length2 = ifelse(length < 51, 51, ifelse(length > 79, 79, length)),
+         length_bin = cut(length2, breaks = seq(50.9, 79.9, 1), 
+                          labels = paste(seq(51, 79, 1)))) %>% 
+  select(-length2)
 
 # Reorganize data and get number of fish caught in experimental pots / control
 # pots for each length bin
-sum_df <- bio %>% 
+df <- bio %>% 
   group_by(Treatment, effort_no, length_bin, .drop=FALSE) %>% # 
   dplyr::summarise(n = n()) %>% 
   ungroup()
 
-sum_df <- sum_df %>%
+df <- df %>%
   filter(Treatment != "Control") %>% 
   dplyr::rename(exp_n = n) %>% 
-  left_join(sum_df %>% 
+  left_join(df %>% 
               filter(Treatment == "Control") %>% 
               select(length_bin, effort_no, ctl_n = n)) %>% #
   mutate(tot_n = exp_n + ctl_n,
@@ -87,7 +80,7 @@ com <- com %>%
          combined_p = exp_n / tot_n,
          length_bin = as.numeric(as.character(length_bin)))
 
-ggplot(sum_df %>% filter, aes(x = length_bin, y = p,
+ggplot(df %>% filter, aes(x = length_bin, y = p,
                    group =  Treatment, col = Treatment)) +
   geom_point() +
   facet_wrap(~Treatment) +
@@ -103,7 +96,6 @@ ggplot(com, aes(x = length_bin, y = combined_p,
 # Model ----
 
 setwd("~/great_escape/code")
-df <- sum_df
 
 # Number of pots per set that were sampled for each treatment
 ntrt_df <- counts %>% 
@@ -133,6 +125,7 @@ s100_index <- c(20, 24, 27)
 s50_vec <- vector(length = 3)
 slp_vec <- vector(length = 3)
 
+# Get starting values from theoretical selectivity curves
 for(i in 1:length(unique(df$Treatment))) {
   tmp <- sprior %>% filter(Treatment == unique(df$Treatment)[i])
   fit <- glm(p ~ length, data = tmp, family = "quasibinomial")
@@ -140,6 +133,7 @@ for(i in 1:length(unique(df$Treatment))) {
   slp_vec[i] <- coef(fit)[2] / 4 
 }
 
+# TMB data structure
 data <- list(nset = length(unique(df$effort_no)),#17, # # number of sets
              nlen = length(unique(df$length_bin)), # number of length bins
              ntrt = length(unique(df$Treatment)), # number of treatments
@@ -157,95 +151,50 @@ data <- list(nset = length(unique(df$effort_no)),#17, # # number of sets
              s0_index = s0_index, # Index of length where theoretical curves were 0 and 1 for each treatment
              s100_index = s100_index) 
 
+# Model parameters
 parameters <- list(dummy = 0,
                    s50 = s50_vec,
                    slp = slp_vec,
                    log_delta = log(1),
                    nu = rep(0, length(unique(df$effort_no))))
 
+# Compile
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
-
-# Bounds
-l_log_delta <- log(0.5);
-u_log_delta <- log(1.5);
-
-l_nu <- rep(-5, data$nset)
-u_nu <- rep(5, data$nset)
 
 # Model 1: Assume fixed delta
 map <- list(dummy = factor(NA),
             log_delta = factor(NA))
 
-# Model 2: Estimate delta
-map <- list(dummy = factor(NA))
-# lowbnd <- c(l_alpha, l_beta, l_a1, l_b1, l_a2, l_b2) 
-# uppbnd <- c(u_alpha, u_beta, u_a1, u_b1, u_a2, u_b2) 
-
 obj <- MakeADFun(data, parameters, map = map, 
                    DLL = "escape", silent = TRUE,
-                   hessian = TRUE, random = "nu") #
+                   hessian = TRUE, random = "nu") 
 
-# checking for minimization
-xx <- obj$fn(obj$env$last.par)
-print(obj$report())
-
-opt <- nlminb(obj$par, obj$fn, obj$gr)#,  
-# lower=lowbnd,upper=uppbnd)
+opt <- nlminb(obj$par, obj$fn, obj$gr)
 
 Mod1_AIC <- TMBAIC(opt)
+
+# Model 2: Estimate delta
+map <- list(dummy = factor(NA))
+
+obj <- MakeADFun(data, parameters, map = map, 
+                 DLL = "escape", silent = TRUE,
+                 hessian = TRUE, random = "nu") 
+
+opt <- nlminb(obj$par, obj$fn, obj$gr)
+
 Mod2_AIC <- TMBAIC(opt)
 
 Mod1_AIC - Mod2_AIC
+
 best <- obj$env$last.par.best
 print(best)
 rep <- sdreport(obj)
 print(rep)
 
-phi <- as.data.frame(obj$report()$fit_phi)
-names(phi) <- paste0(unique(df$Treatment))
-phi <- phi %>% mutate(length_bin = len)
-phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi")
-
-com %>% 
-  left_join(phi, by = c("Treatment", "length_bin")) %>% 
-  mutate(resid = combined_p - phi) -> tmp
-  
-ggplot(tmp) +
-  geom_point(aes(x = length_bin, y = combined_p,
-                      group =  Treatment, col = Treatment)) +
-  # geom_hline(yintercept = 0.5) +
-  geom_line(aes(x = length_bin, y = phi, group = Treatment, col = Treatment)) #+
-
-ggplot(tmp, aes(x = length_bin, y = resid)) +
-  geom_hline(yintercept = 0, col = "grey", size = 1) +
-  geom_segment(aes(x = length_bin, xend = length_bin, y = 0, yend = resid),
-               size = 0.2, col = "grey") +
-  geom_point() +
-  facet_wrap(~Treatment)
-
-slx <- as.data.frame(obj$report()$full_slx)
-names(slx) <- paste0(unique(df$Treatment))
-slx <- slx %>% mutate(length_bin = fit_len)# sort(unique(df$length_bin)))
-slx <- melt(data = slx, id.vars = "length_bin", variable.name = "Treatment", value.name = "slx")
-
-ggplot() +
-  ylim(c(0,1)) +
-  geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
-
-plot(sort(unique(df$length_bin)), obj$report()$fit_phi[,1], type = "l", 
-     col = "black", xlab = "Length (cm)", ylab = "# Treatment / (# Control + # Treatment)", 
-     ylim = c(0,0.6))
-phi <- as.data.frame(obj$report()$phi[,,1])
-names(phi) <- paste("set", 1:17, sep = "_")
-for(i in 1:17) {
-  tmp <- phi[,i]
-  points(sort(unique(df$length_bin)), tmp, add = TRUE, type = "l", col = "grey")
-}
-obj$report()$penl_s50
-obj$report()$penl_slp
 obj$report()$prior_s0
 obj$report()$prior_s100
+obj$report()$set_effect
 
 # MCMC ----
 
@@ -260,14 +209,12 @@ init.fn <- function(){
        nu = rnorm(length(unique(df$effort_no))))}
 
 fit <- tmbstan(obj, chains = cores, open_progress = FALSE, init = init.fn)
-dev.new()
-# Pairs plot of the fixed effects
-pairs(fit, pars = names(obj$par))
+
+pdf(file = "../figures/pairs.pdf", family = "Times", width = 7.08, height = 7.08)#, width = 180, height = 180)# , dpi = 600, units = "mm")
+pairs(fit, pars = names(obj$par)) # Pairs plot of the fixed effects
 dev.off()
 
-
-## To explore the fit use shinystan
-library(shinystan)
+# Explore the fit use shinystan
 launch_shinystan(fit)
 
 ## Can also get ESS and Rhat from rstan::monitor
@@ -281,7 +228,9 @@ methods(class="stanfit")
 
 # Trace plot
 dev.new()
-traceplot(fit, pars = names(obj$par), inc_warmup = FALSE)
+trace <- traceplot(fit, pars = names(obj$par), inc_warmup = FALSE)
+trace + scale_color_grey() + theme(legend.position = c(0.7,0.15), legend.direction = "horizontal")
+ggsave(filename = "../figures/trace.pdf", width = 180, height = 180, units = "mm")
 
 # Extract marginal posteriors easily
 post <- as.matrix(fit)
@@ -289,13 +238,88 @@ hist(post[,'nu[1]'])                     # random effect
 hist(post[,'s50[1]'])                    # fixed effect
 dim(post)
 
-# Posterior for derived quantities. The last column in post is the log-posterior
-# density (lp__) and needs to be dropped
-obj$report(post[1,-ncol(post)]) 
+# Summary of parameter estimates 
+pars_sum <- summary(fit)$summary
 
-sd0 <- rep(NA, len = nrow(post))
+# Posterior for derived quantities slx and phi. The last column in post is the
+# log-posterior density (lp__) and needs to be dropped via -ncol(post)
+slx <- list()
+phi <- list()
+
 for(i in 1:nrow(post)){
   r <- obj$report(post[i,-ncol(post)])
-  sd0[i] <- r$sd0
+  slx[[i]] <- cbind(r$full_slx, rep(i, nrow(r$full_slx)), fit_len)
+  phi[[i]] <- cbind(r$fit_phi, rep(i, nrow(r$fit_phi)), len)
 }
-hist(sd0)
+
+slx <- as.data.frame(do.call(rbind, slx))
+names(slx) <- c(paste(unique(df$Treatment)), "iter", "length_bin")
+slx <- slx %>% 
+  melt(id.vars = c("iter", "length_bin"), variable.name = "Treatment", value.name = "slx") %>% 
+  group_by(Treatment, length_bin) %>% 
+  summarize(mean = mean(slx),
+            median = median(slx),
+            q025 = quantile(slx, 0.025),
+            q975 = quantile(slx, 0.975))
+
+phi <- as.data.frame(do.call(rbind, phi))
+names(phi) <- c(paste(unique(df$Treatment)), "iter", "length_bin")
+phi <- phi %>% 
+  melt(id.vars = c("iter", "length_bin"), variable.name = "Treatment", value.name = "phi") %>% 
+  group_by(Treatment, length_bin) %>% 
+  summarize(mean = mean(phi),
+            median = median(phi),
+            q025 = quantile(phi, 0.025),
+            q975 = quantile(phi, 0.975))
+
+com %>% 
+  select(Treatment, length_bin, p = combined_p) %>% 
+  left_join(phi, by = c("Treatment", "length_bin")) %>% 
+  mutate(resid = p - mean) -> phi
+
+# Figures ----
+
+# Selectivity
+p_slx <- ggplot(slx, aes(x = length_bin, linetype = Treatment, col = Treatment)) +
+  geom_ribbon(aes(ymin = q025, ymax = q975), col = NA, alpha = 0.1, show.legend = FALSE) +
+  geom_line(aes(y = mean, group = Treatment), size = 1) +
+  xlim(c(40, 100)) +
+  scale_colour_manual(values = c("grey70", "grey40", "black")) +
+  # scale_colour_manual(values = c("black", "black", "black")) +
+  scale_linetype_manual(values = c(1, 2, 3)) +
+  xlim(30, 90) +
+  labs(x = "Length (cm)", y = "Proportion retained") + 
+  theme(legend.position = c(0.8, 0.2),
+        legend.key.width = unit(1.6,"line"))
+p_slx
+ggsave(filename = "../figures/slx_ci.pdf", plot = p_slx, device = "pdf",
+       dpi = 600, units = "mm", width = 80, height = 80)
+
+# Phi residuals
+p_resid <- ggplot(phi, aes(x = length_bin, y = resid)) +
+  geom_hline(yintercept = 0, col = "grey", size = 1) +
+  geom_segment(aes(x = length_bin, xend = length_bin, y = 0, yend = resid),
+               size = 0.2, col = "grey") +
+  geom_point() +
+  facet_wrap(~Treatment, ncol = 1) +
+  labs(x = "Length (cm)", y = "Residuals") +
+  theme(strip.text.x = element_text(size=0))
+
+# Phi 
+phi <- phi %>% mutate(Treatment2 = Treatment)
+p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) + 
+    geom_line(data = select(phi, -Treatment),
+            aes(y = mean, group = Treatment2), col = "grey") +
+  geom_ribbon(aes(ymin = q025, ymax = q975),
+              alpha = 0.1, col = NA) +
+  geom_point(aes(y = p)) + 
+  geom_line(aes(y = mean)) + 
+  labs(x = "Length (cm)", y = "Proportion in treatment pot") +
+  geom_text(aes(x = 55, y = 0.6, label = Treatment)) +
+  facet_wrap(~ Treatment, ncol = 1) +
+  theme(strip.text.x = element_text(size=0))
+
+p <- plot_grid(p_phi, p_resid, ncol = 2)
+p
+ggsave(filename = "../figures/phi_resids.pdf", plot = p, dpi = 600, 
+       device = "pdf", units = "mm", width = 180)

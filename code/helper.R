@@ -31,11 +31,11 @@ if(!require("ciTools"))   install.packages("ciTools") # GLM prediction intervals
 
 # Figure theme ----
 
-windowsFonts(Times=windowsFont("Times New Roman"))
+windowsFonts(Times=windowsFont("Helvetica"))
 
-theme_sleek <- function(base_size = 12, base_family = "Times") {
+theme_sleek <- function(base_size = 10, base_family = "Helvetica") {
   half_line <- base_size/2
-  theme_light(base_size = 12, base_family = "Times") +
+  theme_light(base_size = 10, base_family = "Helvetica") +
     theme(
       panel.grid.major = element_blank(),
       panel.grid.minor = element_blank(),
