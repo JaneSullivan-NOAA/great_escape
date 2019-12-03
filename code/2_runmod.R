@@ -93,16 +93,7 @@ ggplot(com, aes(x = length_bin, y = combined_p,
   ylim(c(0,1)) +
   geom_smooth()
 
-# Model ----
-
-setwd("~/great_escape/code")
-
-# Number of pots per set that were sampled for each treatment
-ntrt_df <- counts %>% 
-  group_by(Treatment, set) %>% 
-  dplyr::summarise(ntrt = length(which(disposition == "tagged"))) %>% 
-  dcast(set ~ Treatment)
-
+# Priors ----
 # Priors on 0 and 100% retention:
 filter(sprior, p == 1 & Treatment != "Control") %>% 
   group_by(Treatment) %>% 
@@ -125,6 +116,40 @@ s100_index <- c(20, 24, 27)
 s50_vec <- vector(length = 3)
 slp_vec <- vector(length = 3)
 
+# Beta prior for s0 and s100
+prior <- function(a, b, label){
+  x <- seq(0.0001, .9999, 0.0001)
+  val <- dbeta(x, a, b)
+  return(data.frame('x' = x,
+                    'y' = val,
+                    'label'= rep(label, length(x))))
+}
+
+s0_alpha <- 0.7
+s0_beta <- 20
+s100_alpha <- 40.0
+s100_beta <- 0.1
+
+bind_rows(prior(a = s0_alpha, b = s0_beta, label = "s0"),
+          prior(a = s100_alpha, b = s100_beta, label = "s100")) %>% 
+  ggplot(aes(x, y, col = factor(label), linetype = factor(label))) +
+  geom_line(size = 1) +
+  scale_colour_grey() +
+  ylim(0,10) +
+  labs(x = expression(theta), y = expression(paste('p(',theta,')', sep = '')),
+       col = expression(theta), lty = expression(theta)) +
+  theme(legend.position = c(0.2, 0.8))
+
+# Model ----
+
+setwd("~/great_escape/code")
+
+# Number of pots per set that were sampled for each treatment
+ntrt_df <- counts %>% 
+  group_by(Treatment, set) %>% 
+  dplyr::summarise(ntrt = length(which(disposition == "tagged"))) %>% 
+  dcast(set ~ Treatment)
+
 # Get starting values from theoretical selectivity curves
 for(i in 1:length(unique(df$Treatment))) {
   tmp <- sprior %>% filter(Treatment == unique(df$Treatment)[i])
@@ -146,10 +171,16 @@ data <- list(nset = length(unique(df$effort_no)),#17, # # number of sets
                              dim = c(length(unique(df$length_bin)),
                                      length(unique(df$effort_no)),
                                      length(unique(df$Treatment)))),
+             prior_type = 0, # 0 = normal, 1 = beta
+             s0_index = s0_index, # Index of length where theoretical curves were 0 and 1 for each treatment
+             s100_index = s100_index,
              sigma_s0 = 0.35,  # priors to constrain selectivity at 0 and 1
              sigma_s100 = 0.05,
-             s0_index = s0_index, # Index of length where theoretical curves were 0 and 1 for each treatment
-             s100_index = s100_index) 
+             s0_alpha = s0_alpha,
+             s0_beta = s0_beta,
+             s100_alpha = s100_alpha,
+             s100_beta = s100_beta
+) 
 
 # Model parameters
 parameters <- list(dummy = 0,
@@ -196,6 +227,37 @@ obj$report()$prior_s0
 obj$report()$prior_s100
 obj$report()$set_effect
 
+phi <- as.data.frame(obj$report()$fit_phi)
+names(phi) <- paste0(unique(df$Treatment))
+phi <- phi %>% mutate(length_bin = len)
+phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi")
+
+com %>% 
+  left_join(phi, by = c("Treatment", "length_bin")) %>% 
+  mutate(resid = combined_p - phi) -> tmp
+
+ggplot(tmp) +
+  geom_point(aes(x = length_bin, y = combined_p,
+                 group =  Treatment, col = Treatment)) +
+  # geom_hline(yintercept = 0.5) +
+  geom_line(aes(x = length_bin, y = phi, group = Treatment, col = Treatment)) #+
+
+ggplot(tmp, aes(x = length_bin, y = resid)) +
+  geom_hline(yintercept = 0, col = "grey", size = 1) +
+  geom_segment(aes(x = length_bin, xend = length_bin, y = 0, yend = resid),
+               size = 0.2, col = "grey") +
+  geom_point() +
+  facet_wrap(~Treatment)
+
+slx <- as.data.frame(obj$report()$full_slx)
+names(slx) <- paste0(unique(df$Treatment))
+slx <- slx %>% mutate(length_bin = fit_len)# sort(unique(df$length_bin)))
+slx <- melt(data = slx, id.vars = "length_bin", variable.name = "Treatment", value.name = "slx")
+
+ggplot() +
+  ylim(c(0,1)) +
+  geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
+
 # MCMC ----
 
 # fit <- tmbstan(obj, chains = 1)
@@ -228,7 +290,7 @@ methods(class="stanfit")
 
 # Trace plot
 dev.new()
-trace <- traceplot(fit, pars = names(obj$par), inc_warmup = FALSE)
+trace <- traceplot(fit, pars = names(obj$par), inc_warmup = TRUE)
 trace + scale_color_grey() + theme(legend.position = c(0.7,0.15), legend.direction = "horizontal")
 ggsave(filename = "../figures/trace.pdf", width = 180, height = 180, units = "mm")
 

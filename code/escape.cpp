@@ -24,10 +24,15 @@ Type objective_function<Type>::operator() ()
   DATA_MATRIX(ctl_dat)        // control pots: number of fish in each length bin by set [i,j]
   DATA_ARRAY(trt_dat)         // experimental pots: number of fish in each length bin by set and treatment [i,j,k]
   
-  DATA_SCALAR(sigma_s0)       // Priors based on theoretical curves to consrain selectivity at slx = 0 and 1
-  DATA_SCALAR(sigma_s100)     
+  DATA_INTEGER(prior_type)    // Priors based on theoretical curves to consrain selectivity. 0 = normal, 1 = beta
   DATA_IVECTOR(s0_index)      // Index of length where theoretical curves were 0 and 1 for each treatment [k]
   DATA_IVECTOR(s100_index)  
+  DATA_SCALAR(sigma_s0)       // Sigma for normal prior
+  DATA_SCALAR(sigma_s100)     
+  DATA_SCALAR(s0_alpha)       // shape 1 parameter for beta prior
+  DATA_SCALAR(s0_beta)        // shape 2 parameter for beta prior
+  DATA_SCALAR(s100_alpha)      
+  DATA_SCALAR(s100_beta)       
   
   // PARAMETER SECTION ----
   
@@ -159,8 +164,16 @@ Type objective_function<Type>::operator() ()
     for (int k = 0; k < ntrt; k++) {
       s0 = fit_slx(s0_index(k),k);
       s100 = fit_slx(s100_index(k),k);
-      prior_s0 += Type(0.5) * square(s0 - Type(0)) / square(sigma_s0);
-      prior_s100 += Type(0.5) * square(s100 - Type(1)) / square(sigma_s100);
+      
+      if (prior_type == 0) { // Normal
+        prior_s0 += Type(0.5) * square(s0 - Type(0)) / square(sigma_s0);
+        prior_s100 += Type(0.5) * square(s100 - Type(1)) / square(sigma_s100);
+      }
+      
+      if (prior_type == 1) { // Beta
+        prior_s0 += dbeta(s0, s0_alpha, s0_beta, false);
+        prior_s100 += dbeta(s100, s100_alpha,s100_beta, false);
+      }
     }
   }
   nll += prior_s0;

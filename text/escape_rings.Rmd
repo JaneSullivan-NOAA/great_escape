@@ -25,20 +25,6 @@ effort <- read_csv(paste0("../data/pot_effort_", YEAR, ".csv"))
 
 ```
 
-# Background
-
-In 2018, the Alaska Department of Fish and Game (ADFG) reviewed a Board of Fish (BOF) proposal to create a live fish pot fishery for sablefish in Clarence Strait, Alaska. The primary concern among management biologists was the harvest of immature individuals, which comprise the "plate size" target in a live fish market. 
-
-A pot fishery for sablefish exists in British Columbia, where they implemented a minimum size limit of xx cm and use a 3.5 in escape ring on sablefish pot gear to reduce incidental capture of sublegal fish (Haist and Hilborn 2000, Haist et al. 2004). DESCRIPTION OF BC ESCAPE RING STUDIES. 
-
-Data collected in annual surveys conducted by ADFG suggest sablefish mature at larger sizes in Alaska than British Columbia. SUMMARY OF DATA. In order to reduce catch rates of immature sablefish, the Board of Fish adopted 4 in escape rings in the Clarence Sound sablefish pot fishery (REFERENCE). 
-
-An escape ring experiment was conducted in order to analyze the impact of escape rings on capture efficiency and gear selectivity. Optimal escape ring size provides the best compromise between low catches of immature sablefish while maintaining high CPUE of mature sablefish. Three alternative escape ring sizes - 3.5, 3.75, and 4 in - were evaluated during the ADFG annual sablefish tagging survey during May 2019.
-
-# Materials and methods
-
-The 2019 study followed a fixed effects design. A longline of `r distinct(effort, n_pots)` pots were set at `r n_distinct(bio$effort_no)` randomly selected stations in Chatham Strait during the ADFG sablefish tagging survey (REFERENCE). Each set was comprised of 4 treatments with 10 pots per treatment in a fixed alternating design (FIGURE). The 4 treatments included a control (no escape rings), two 3.5 in rings, two 3.75 in rings, and two 4 in rings.
-
 ```{r data_summary}
 
 # Total lengths
@@ -118,17 +104,5 @@ kable(n_tbl)
 ```
 
 There were `r prettyNum(pull(tot_discards, n), big.mark = ',')` fish that were lost, not tagged properly,  already tagged from another agency, dead or unmarketable due to sandflea bites or other damage, and were subsequently excluded from the remainder of the analysis. This reflected `r formatC(round(pull(tot_discards, n) / tot_fish * 100, 2))` of the total fish captured on the survey (`r prettyNum(tot_fish, big.mark = ",")`), resulting in a total of `r prettyNum(pull(len_totn, len_n), big.mark = ",")` fish lengths available for analysis (T). In addition to lengths, a subset of sablefish girths and weights were collected using a stratified random sampling design during the tagging survey. The fish girth, or circumference, was measured anterior to the dorsal fin and posterior to the pectoral and pelvic fins at fish's the thickest point and recorded to the nearest mm. Additionally, fish stuck in the esacape rings were documented and measured for girth and weight when possible.
-
-## Theoretical length-based selectivity curves
-
-A set of theoretical length-based selectivity curves were developed using the a girth-length relationship and the length composition data collected during the survey experiment. Seasonal changes in the girth-length and weight-length relationship between the timing of the survey (May) and fishery (Fall) were evaluated by comparing linear regressions during these time periods.
-
-## Estimating selectivity
-We used a modified form of the SELECT (Share Each LEngth-classe's Catch Total) method to estimate length-based selectivity curves for sablefish pot gear. The SELECT method uses fishing effort and length data from catch to compare different fishing gears fished at the same time.
-
-# Results
-
-
-
 
 
