@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = TRUE)
 YEAR <- 2019 # study year(s)
 source("../code/helper.r")
 
-bio <- read_csv(paste0("../data/pot_bio_", YEAR, ".csv")) %>% 
+bio <- read_csv(paste0("../data/bio_cleaned_", YEAR, ".csv")) %>% 
   filter(!is.na(length)) %>% 
   mutate(Treatment = derivedFactor("Control" = Treatment == "99",
                                    "3.50 in" = Treatment == "02",

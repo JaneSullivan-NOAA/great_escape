@@ -12,9 +12,9 @@ library(FSA) # for Dunn test
 # Bio data
 bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv")) %>% 
   mutate(Treatment = derivedFactor("Control" = Treatment == "Control",
-                            "3.50 in" = Treatment == "3.50 in",
-                            "3.75 in" = Treatment == "3.75 in",
-                            "4.00 in" = Treatment == "4.00 in",
+                            "8.9 cm" = Treatment == "3.50 in",
+                            "9.5 cm" = Treatment == "3.75 in",
+                            "10.2 cm" = Treatment == "4.00 in",
                             .default = NA,
                             .ordered = TRUE))
 
@@ -28,9 +28,9 @@ effort <- read_csv(paste0("data/pot_effort_", YEAR, ".csv"))
 # dumped due to processing time)
 counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>% 
   mutate(Treatment = derivedFactor("Control" = treatment == "Blue",
-                                   "3.50 in" = treatment == "Purple",
-                                   "3.75 in" = treatment == "Green",
-                                   "4.00 in" = treatment == "Yellow",
+                                   "8.9 cm" = treatment == "Purple",
+                                   "9.5 cm" = treatment == "Green",
+                                   "10.2 cm" = treatment == "Yellow",
                                    .default = NA,
                                    .ordered = TRUE))
 
@@ -163,20 +163,24 @@ pred <- pred %>%
          lower = exp(pi_lwr) * exp(0.5 * sigma(fit_int)^2),
          upper = exp(pi_upp) * exp(0.5 * sigma(fit_int)^2))
 
-p <- ggplot() +
+pred <- pred %>% mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep and Oct)"), ordered = TRUE))
+comb_grth <- comb_grth %>% mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep and Oct)"), ordered = TRUE))
+
+p1 <- ggplot() +
   geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper, fill = Source), 
               alpha = 0.3) +
-  geom_point(data = comb_grth, aes(x = length, y = girth, colour = Source, shape = Source), size = 0.8) +
+  geom_point(data = comb_grth, aes(x = length, y = girth, colour = Source, shape = Source), size = 0.8, alpha = 0.7) +
   geom_line(data = pred, aes(x = length, y = fitted, group = Source, colour = Source, linetype = Source), size = 1) +
   scale_colour_manual(values = c("grey10", "grey60")) +
   scale_fill_manual(values = c("grey80", "grey70")) +
   labs(x = "Length (cm)", y = "Girth (mm)") +
-  theme(legend.position = c(0.8, 0.2))
-p
+  theme(legend.position = c(0.75, 0.2),
+        legend.text=element_text(size = 7))
+p1
 # Caption: A comparison of fitted values and prediction intervals for the
 # regression of girth on length for data collected during the survey in May
 # (grey triangles) and fishery in September and October (black circles).
-ggsave(plot = p, filename = paste0("figures/girth_bysource_", YEAR, ".pdf"), 
+ggsave(plot = p1, filename = paste0("figures/girth_bysource_", YEAR, ".pdf"), 
        dpi=600, height=180, width=180, units="mm")
 
 # Theoretical selectivity curves ----
@@ -204,7 +208,8 @@ pred_df$pred <- predict(fit, pred_df)
 # A. Baldwin measured the mesh size diameter for me. Assume 73 mm. See issue 2
 # on github for documentation.
 ring <- data.frame(ring_in = c(73 / 25.4, 3.5, 3.75, 4)) %>% 
-  mutate(ring_mm = ring_in * 25.4)
+  mutate(ring_mm = ring_in * 25.4) %>% 
+  mutate(ring_cm = round(ring_mm / 10, 1))
 
 # Assume girths are lognormally distributed. Simulate girth distribution at 1 cm
 # increments, divide by pi to get approximate fish diameter. Determine proportion
@@ -237,8 +242,8 @@ sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
 p <- ggplot(sel, aes(x = length, y = p, col = Treatment, 
                      linetype = Treatment, group = Treatment, size = Treatment)) +
   geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
-  geom_vline(xintercept = 62, col = "lightgrey", size = 0.4, lty = 2) +
-  # geom_point(aes(x = 62, y = 0.5), col = "green", size = 1) +
+  geom_vline(xintercept = 61, col = "lightgrey", size = 0.4, lty = 2) +
+  # geom_point(aes(x = 61, y = 0.5), col = "green", size = 1) +
   geom_line() +
   scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
   scale_size_manual(values = c(1.5, 0.7, 0.7, 0.7)) +
@@ -250,6 +255,65 @@ p
 # Caption: Theoretical selectivity curves for control and escape ring treatments.
 ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".pdf"),
        dpi=600, height=80, width=80, units="mm")
+
+# Theoretical with fishery girth ----
+
+fit <- glm(log(girth) ~ log(length), family = gaussian(link = "identity"), data = fsh_grth)
+summary(fit)
+girth_se <- sigma(fit) # se of girth
+
+pred_df <- data.frame(length = seq(30, 100, 0.01))
+pred_df$pred <- predict(fit, pred_df)
+
+sel_grth <- matrix(nrow = length(pred_df$pred),
+              ncol = length(ring$ring_mm))
+nsim <- 5000
+
+for(i in 1:length(pred_df$pred)) {
+  
+  sim <- exp(rnorm(n = nsim, mean = pred_df$pred[i], sd = girth_se)) / pi
+  
+  for(j in 1:length(ring$ring_mm)) {
+    
+    sel_grth[i,j] <- length(which(sim > ring$ring_mm[j])) / nsim
+  }
+}
+
+# Reformat and plot
+sel_grth <- as.data.frame(sel_grth)
+names(sel_grth) <- levels(bio$Treatment)
+sel_grth <- sel_grth %>% mutate(length = pred_df$length)
+sel_grth <- data.table::melt(data = sel_grth, id.vars = "length", variable.name = "Treatment", value.name = "p")
+
+full_sel <- sel %>% 
+  mutate(Source = "Survey (May)") %>% 
+  bind_rows(sel_grth %>% 
+              mutate(Source = "Fishery (Sep and Oct)")) %>% 
+  filter(Treatment != "Control") %>% 
+  droplevels() %>% 
+  mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep and Oct)"), ordered = TRUE))
+
+full_sel <- full_sel %>% filter(length %in% seq(40, 100, 0.1))
+
+p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source, 
+                     linetype = Treatment, group = interaction(Source, Treatment))) +
+  # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
+  # geom_vline(xintercept = 61, col = "lightgrey", size = 0.4, lty = 2) +
+  geom_line() +
+  scale_colour_grey() +
+  # scale_size_manual(values = c(0.7, 1)) +
+  labs(x = "Length (cm)", y = "Proportion retained") +
+  theme(legend.position = c(0.79, 0.3),
+        legend.text=element_text(size = 7),
+        legend.spacing.y = unit(0, "cm")) +
+  # guides(linetype = guide_legend(order = 1),
+  #   colour = guide_legend(order = 0)) +
+  xlim(c(40,85))
+
+p3 <- plot_grid(p1, p2, ncol = 2)
+p3
+ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".pdf"),
+       dpi=600, height = 80, width=180, units="mm")
 
 # Theoretical w/ soak time ----
 
@@ -335,11 +399,11 @@ sel %>%
 
 p <- ggplot() +
   # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
-  # geom_vline(xintercept = 62, col = "lightgrey", size = 0.4, lty = 2) +
+  # geom_vline(xintercept = 61, col = "lightgrey", size = 0.4, lty = 2) +
   geom_line(data = ctl, aes(x = length, y = p, lty = Treatment), colour = "grey90", size = 1) +
   geom_line(data = sel, aes(x = length, y = p, col = factor(soak_time), 
                      linetype = Treatment, group = interaction(Treatment, soak_time)), size = 0.5) +
-  # geom_point(aes(x = 62, y = 0.5), col = "green", size = 1.5) +
+  # geom_point(aes(x = 61, y = 0.5), col = "green", size = 1.5) +
   scale_colour_manual(values = c("grey70", "black")) +
   scale_linetype_manual(values = c(1, 2, 3, 1)) +
   labs(x = "Length (cm)", y = "Proportion retained", color = "Soak time (hr)") +
@@ -367,11 +431,17 @@ tst_counts <- counts %>% mutate(Treatment = factor(Treatment, ordered = FALSE))
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst_counts, method = "bonferroni")
 dunn
 
+mu <- counts %>% 
+  filter(Treatment == "Control") %>% 
+  summarize(mu = median(n_sablefish)) %>% 
+  pull(mu)
+
 p <- counts %>% 
   mutate(facet = "All sizes combined") %>% 
   ggplot(aes(x = Treatment, y = n_sablefish)) +
   # If the notches don't overlap this suggests the means are different
   geom_boxplot(notch = TRUE) +
+  geom_hline(yintercept = mu, col = "grey", lty = 2) +
   labs(x = NULL, y = "Number of sablefish per pot") +
   theme(plot.title = element_text(hjust = 0.5)) +
   facet_wrap(~facet)
@@ -385,7 +455,7 @@ counts %>%
   kable()
 
 # Split up CPUE data by length. We have a smaller sample size than the combined
-# Two categories: 1) < 62 cm (the L50 for females in NSEI) and 2) >= 62 cm
+# Two categories: 1) < 61 cm (the overall L50 for SEAK) and 2) >= 61 cm
 
 # Mean size by set
 bio %>% 
@@ -409,34 +479,42 @@ bio %>%
 size_cpue <- bio %>% 
   # Remove "stuck" fish b/c they cannot be attributed to a specific pot
   filter(pot_no != 99) %>% 
-  mutate(Size_category = ifelse(length < 62, 
-                                "Sablefish < 62 cm", "Sablefish >= 62 cm")) %>% 
+  mutate(Size_category = ifelse(length < 61, 
+                                "Sablefish < 61 cm", "Sablefish \u2265 61 cm")) %>%
+                                # expression("Sablefish "<" 61 cm"), expression("Sablefish ">="61 cm"))) %>% 
   group_by(Treatment, effort_no, pot_no, Size_category) %>% 
   summarize(n_sablefish = n()) 
+
+mu_size <- size_cpue %>% 
+  filter(Treatment == "Control") %>% 
+  group_by(Size_category) %>% 
+  summarize(mu = median(n_sablefish)) #%>% 
+  # pull(mu)
 
 p2 <- ggplot(size_cpue, aes(x = Treatment, y = n_sablefish)) +
   # If the notches don't overlap this suggests the means are different
   geom_boxplot(notch = TRUE) +
-  facet_wrap(~ Size_category, scales = "free_y") +
+  geom_hline(data = mu_size, aes(yintercept = mu), col = "grey", lty = 2) +
+  facet_wrap(~ Size_category, scales = "free_y") + 
   labs(x = NULL, y = "Number of sablefish per pot")
 p2
 
 plot_grid(p, p2, nrow = 2)
 
 ggsave(filename = paste0("figures/cpue_", YEAR, ".pdf"),
-       dpi=600, height=180, width=180, units="mm")
+       dpi=600, height=180, width=180, units="mm", device = cairo_pdf)
 
 # All significant
 tst <- size_cpue %>% 
   ungroup() %>% 
-  filter(Size_category == "Sablefish < 62 cm") %>% 
+  filter(Size_category == "Sablefish < 61 cm") %>% 
   mutate(Treatment = factor(Treatment, ordered = FALSE))
 kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
 dunn
 
 tst <- size_cpue %>% ungroup() %>% 
-  filter(Size_category == "Sablefish >= 62 cm") %>% 
+  filter(Size_category == "Sablefish \u2265 61 cm") %>% 
   mutate(Treatment = factor(Treatment, ordered = FALSE))
 kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
