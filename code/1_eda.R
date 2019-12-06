@@ -533,6 +533,10 @@ tst <- size_cpue %>%
 kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
 dunn
+tst %>% 
+  group_by(Treatment) %>% 
+  summarize(median = median(n_sablefish),
+            mean = mean(n_sablefish))
 
 tst <- size_cpue %>% ungroup() %>% 
   filter(Size_category == "Sablefish \u2265 61 cm") %>% 
@@ -543,4 +547,6 @@ dunn
 
 size_cpue %>% ungroup() %>% 
   filter(Size_category == "Sablefish \u2265 61 cm") %>% 
-  group+
+  group_by(Treatment) %>% 
+  summarize(median = median(n_sablefish),
+            mean = mean(n_sablefish))

@@ -432,3 +432,49 @@ p <- plot_grid(p_phi, p_resid, ncol = 2)
 p
 ggsave(filename = "../figures/phi_resids.pdf", plot = p, dpi = 600, 
        device = "pdf", units = "mm", width = 180)
+
+# Generalized curves -----
+
+# Regress s50 and k estimates on escape ring diameter to develop generalized
+# selectivity equation (Eq 6 in Arana et al 2011) *Note that our
+# parameterization of the logistic model is slightly different.
+
+s50_est <- pars_sum[1:3,1]
+slp_est <- pars_sum[4:6,1]
+
+s50_lm <- lm(s50_est ~ ring_sizes)
+coef(s50_lm)
+summary(s50_lm)
+
+slp_lm <- lm(slp_est ~ ring_sizes)
+coef(slp_lm)
+summary(slp_lm)
+
+ring_vec <- seq(8.5, 10.5, 0.4)
+
+p_gen <- matrix(nrow = length(fit_len), ncol = length(ring_vec))
+
+for(i in 1:length(fit_len)) {
+  for(j in 1:length(ring_vec)) {
+  p_gen[i,j] <- 1 / (1 + exp(-1 * (coef(slp_lm)[1] + coef(slp_lm)[2] * ring_vec[j]) *
+                               (fit_len[i] - (coef(s50_lm)[1] + coef(s50_lm)[2] * ring_vec[j]))))
+  }
+}
+
+p_gen <- as.data.frame(p_gen)
+names(p_gen) <- paste(ring_vec, "cm")
+p_gen <- p_gen %>% 
+  mutate(length_bin = fit_len) %>% 
+  melt(id.vars = "length_bin", variable.name = "Escape ring", value.name = "p")
+
+p <- ggplot(p_gen, aes(x = length_bin, y = p, col = `Escape ring`, group = `Escape ring`)) +
+  geom_line() +
+  scale_color_grey() +
+  labs(x = "Fork length (cm)", y = "Proportion retained") +
+  xlim(c(35, 80)) +
+  theme(legend.position = c(0.79, 0.3),
+        legend.text=element_text(size = 6),
+        legend.spacing.y = unit(0, "cm"))
+p
+ggsave(filename = "../figures/gen_slx.pdf", plot = p, device = "pdf",
+       dpi = 600, units = "mm", width = 80, height = 80)
