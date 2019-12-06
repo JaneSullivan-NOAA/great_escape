@@ -45,7 +45,7 @@ p <- bio %>%
   scale_size_manual(values = c(1.3, 0.7, 0.7, 0.7)) +
   scale_linetype_manual(values = c(1, 1, 2, 3)) +
   xlim(40, 90) +
-  labs(x = "Length (cm)", y = "Count") + 
+  labs(x = "Fork length (cm)", y = "Count") + 
   theme(legend.position = c(0.8, 0.7))
 
 p
@@ -65,7 +65,7 @@ p <- ggplot(grth, aes(x = length, y = girth, col = Outlier, shape = Outlier)) +
   geom_point() +
   scale_colour_grey() +
   scale_shape_manual(values = c(20, 8)) +
-  labs(x = "Length (cm)", y = "Girth (mm)") +
+  labs(x = "Fork length (cm)", y = "Girth (mm)") +
   theme(legend.position = c(0.8, 0.2))
 p
 ggsave(plot = p, filename = paste0("figures/girth_outliers_", YEAR, ".pdf"), 
@@ -78,7 +78,7 @@ grth <- grth %>% filter(Outlier != "Outlier") %>%
 p <- ggplot(grth, aes(x = length, y = girth)) +
   geom_point(shape = 20) +
   facet_wrap(~ Treatment) +
-  labs(x = "Length (cm)", y = "Girth (mm)")
+  labs(x = "Fork length (cm)", y = "Girth (mm)")
 p
 ggsave(plot = p, filename = paste0("figures/girth_bytreatment_", YEAR, ".pdf"), 
        dpi=600, height=180, width=180, units="mm")
@@ -121,7 +121,7 @@ p <- ggplot() +
               alpha = 0.6, fill = "grey70") +
   geom_line(data = pred, aes(x = length, y = fitted, group = Treatment)) +
   facet_wrap(~ Treatment) +
-  labs(x = "Length (cm)", y = "Girth (mm)") 
+  labs(x = "Fork length (cm)", y = "Girth (mm)") 
 p
 ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".pdf"), 
        dpi=600, height=180, width=180, units="mm")
@@ -140,7 +140,7 @@ comb_grth <- grth %>%
   mutate(Source = "Survey (May)") %>% 
   bind_rows(fsh_grth %>% 
               select(length, girth) %>% 
-              mutate(Source = "Fishery (Sep and Oct)"))
+              mutate(Source = "Fishery (Sep/Oct)"))
 
 fit_simple <- glm(log(girth) ~ log(length), 
                   family = gaussian(link = "identity"), data = comb_grth)
@@ -148,11 +148,16 @@ fit_int <- glm(log(girth) ~ log(length) + Source,
                family = gaussian(link = "identity"), data = comb_grth)
 fit_intslp <- glm(log(girth) ~ log(length) * Source, 
                   family = gaussian(link = "identity"), data = comb_grth)
-AIC(fit_simple, fit_int, fit_intslp) # best model = different intercepts
+
+AIC_simple <- AIC(fit_simple)
+AIC_int <- AIC(fit_int)
+AIC_intslp <- AIC(fit_intslp) # best model = different intercepts
+AIC_simple - AIC_int
+AIC_int - AIC_intslp
 
 summary(fit_int)
-R2_int <- 1 - (fit_int$deviance / fit_int$null.deviance)
-
+R2_int <- 1 - (fit_int$deviance / fit_int$null.deviance) # coefficient of variation
+sigma(fit_int) # residual standard deviation
 # Get fitted values for girth and prediction intervals (need to exponentiate for figure)
 pred <- comb_grth %>% select(Source, length)
 pred <- ciTools::add_pi(pred, fit_int, alpha = 0.05, names = c("pi_lwr", "pi_upp"))
@@ -163,8 +168,8 @@ pred <- pred %>%
          lower = exp(pi_lwr) * exp(0.5 * sigma(fit_int)^2),
          upper = exp(pi_upp) * exp(0.5 * sigma(fit_int)^2))
 
-pred <- pred %>% mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep and Oct)"), ordered = TRUE))
-comb_grth <- comb_grth %>% mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep and Oct)"), ordered = TRUE))
+pred <- pred %>% mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep/Oct)"), ordered = TRUE))
+comb_grth <- comb_grth %>% mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep/Oct)"), ordered = TRUE))
 
 p1 <- ggplot() +
   geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper, fill = Source), 
@@ -173,9 +178,19 @@ p1 <- ggplot() +
   geom_line(data = pred, aes(x = length, y = fitted, group = Source, colour = Source, linetype = Source), size = 1) +
   scale_colour_manual(values = c("grey10", "grey60")) +
   scale_fill_manual(values = c("grey80", "grey70")) +
-  labs(x = "Length (cm)", y = "Girth (mm)") +
+  labs(x = "Fork length (cm)", y = "Girth (mm)") +
   theme(legend.position = c(0.75, 0.2),
-        legend.text=element_text(size = 7))
+        legend.text=element_text(size = 7)) +
+  annotate('text', x = 45, y = 650,
+           label = as.character(expression(paste(R^{2}==0.9, ",  ", sigma==0.05))),
+           parse = TRUE, size = 3, hjust = 0) +
+  annotate('text', x = 45, y = 620,
+           label = as.character(expression(paste("May:  ",ln(italic(G))==1.50+1.03*ln(italic(L))))),
+           parse = TRUE, size = 3, hjust = 0) +
+  annotate('text', x = 45, y = 590,
+           label = as.character(expression(paste("Sep/Oct:  ",ln(italic(G))==1.50+1.07*ln(italic(L))))),
+           parse = TRUE, col = "grey50", size = 3, hjust = 0)
+  
 p1
 # Caption: A comparison of fitted values and prediction intervals for the
 # regression of girth on length for data collected during the survey in May
@@ -198,18 +213,15 @@ fit <- glm(log(girth) ~ log(length), family = gaussian(link = "identity"), data 
 summary(fit)
 girth_se <- sigma(fit) # se of girth
 
-# fit <- glm(girth ~ length, family = gaussian(link = "identity"), data = grth)
-# summary(fit)
-# girth_se <- sigma(fit)
-
-pred_df <- data.frame(length = seq(30, 100, 0.01))
-pred_df$pred <- predict(fit, pred_df)
+pred_df <- data.frame(length = seq(30, 100, 0.01), 
+                      Source = factor(rep("Survey (May)", length(seq(30, 100, 0.01))))) 
+                                                                   
+pred_df$pred <- predict(fit_int, pred_df)
 
 # A. Baldwin measured the mesh size diameter for me. Assume 73 mm. See issue 2
 # on github for documentation.
 ring <- data.frame(ring_in = c(73 / 25.4, 3.5, 3.75, 4)) %>% 
-  mutate(ring_mm = ring_in * 25.4) %>% 
-  mutate(ring_cm = round(ring_mm / 10, 1))
+  mutate(ring_mm = ring_in * 25.4) 
 
 # Assume girths are lognormally distributed. Simulate girth distribution at 1 cm
 # increments, divide by pi to get approximate fish diameter. Determine proportion
@@ -234,11 +246,11 @@ sel <- as.data.frame(sel)
 names(sel) <- levels(bio$Treatment)
 sel <- sel %>% mutate(length = pred_df$length)
 sel <- data.table::melt(data = sel, id.vars = "length", variable.name = "Treatment", value.name = "p")
+sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
 
-# Save output, 90% selectivity used to inform prior
+# Save output, used to inform prior
 write_csv(sel, paste0("output/theoretical_selectivity_", YEAR, ".csv"))
 
-sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
 p <- ggplot(sel, aes(x = length, y = p, col = Treatment, 
                      linetype = Treatment, group = Treatment, size = Treatment)) +
   geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
@@ -248,7 +260,7 @@ p <- ggplot(sel, aes(x = length, y = p, col = Treatment,
   scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
   scale_size_manual(values = c(1.5, 0.7, 0.7, 0.7)) +
   scale_linetype_manual(values = c(1, 1, 2, 3)) +
-  labs(x = "Length (cm)", y = "Proportion retained") +
+  labs(x = "Fork length (cm)", y = "Proportion retained") +
   theme(legend.position = c(0.8, 0.3)) +
   xlim(c(35,85))
 p
@@ -258,12 +270,10 @@ ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".p
 
 # Theoretical with fishery girth ----
 
-fit <- glm(log(girth) ~ log(length), family = gaussian(link = "identity"), data = fsh_grth)
-summary(fit)
-girth_se <- sigma(fit) # se of girth
+pred_df <- data.frame(length = seq(30, 100, 0.01), 
+                      Source = factor(rep("Fishery (Sep/Oct)", length(seq(30, 100, 0.01))))) 
 
-pred_df <- data.frame(length = seq(30, 100, 0.01))
-pred_df$pred <- predict(fit, pred_df)
+pred_df$pred <- predict(fit_int, pred_df)
 
 sel_grth <- matrix(nrow = length(pred_df$pred),
               ncol = length(ring$ring_mm))
@@ -285,35 +295,46 @@ names(sel_grth) <- levels(bio$Treatment)
 sel_grth <- sel_grth %>% mutate(length = pred_df$length)
 sel_grth <- data.table::melt(data = sel_grth, id.vars = "length", variable.name = "Treatment", value.name = "p")
 
+write_csv(sel_grth, paste0("output/theoretical_slx_fishery_", YEAR, ".csv"))
+
 full_sel <- sel %>% 
   mutate(Source = "Survey (May)") %>% 
   bind_rows(sel_grth %>% 
-              mutate(Source = "Fishery (Sep and Oct)")) %>% 
+              mutate(Source = "Fishery (Sep/Oct)")) %>% 
   filter(Treatment != "Control") %>% 
   droplevels() %>% 
-  mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep and Oct)"), ordered = TRUE))
+  mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep/Oct)"), ordered = TRUE))
 
-full_sel <- full_sel %>% filter(length %in% seq(40, 100, 0.1))
+full_sel <- full_sel %>% filter(length %in% seq(40, 100, 0.2))
 
 p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source, 
                      linetype = Treatment, group = interaction(Source, Treatment))) +
   # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
-  # geom_vline(xintercept = 61, col = "lightgrey", size = 0.4, lty = 2) +
-  geom_line() +
-  scale_colour_grey() +
+  geom_vline(xintercept = 61, col = "grey85", size = 0.5, lty = 5) +
+  geom_line(size = 0.7) +
+  scale_colour_manual(values = c("grey10", "grey60")) +
   # scale_size_manual(values = c(0.7, 1)) +
-  labs(x = "Length (cm)", y = "Proportion retained") +
+  labs(x = "Fork length (cm)", y = "Proportion retained") +
   theme(legend.position = c(0.79, 0.3),
         legend.text=element_text(size = 7),
         legend.spacing.y = unit(0, "cm")) +
-  # guides(linetype = guide_legend(order = 1),
-  #   colour = guide_legend(order = 0)) +
+  annotate("curve", x = 50, y = 0.85, xend = 60.5, yend = 0.99,
+           colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
+  annotate("text", x = 50, y = 0.8, colour = "grey60", size = 3,
+           label = as.character(expression(paste(italic(L)[50]== "61 cm"))), parse = TRUE) +
   xlim(c(40,85))
 
-p3 <- plot_grid(p1, p2, ncol = 2)
+p3 <- plot_grid(p1, p2, ncol = 2, labels = c("A", "B"))
 p3
 ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".pdf"),
        dpi=600, height = 80, width=180, units="mm")
+
+# Values for the text showing %selected at 61 and lengths at which various 
+full_sel %>% filter(length == 61)
+full_sel %>%
+  filter(p > 0.99) %>% 
+  group_by(Source, Treatment) %>% 
+  summarize(min(length))
 
 # Theoretical w/ soak time ----
 
@@ -406,7 +427,7 @@ p <- ggplot() +
   # geom_point(aes(x = 61, y = 0.5), col = "green", size = 1.5) +
   scale_colour_manual(values = c("grey70", "black")) +
   scale_linetype_manual(values = c(1, 2, 3, 1)) +
-  labs(x = "Length (cm)", y = "Proportion retained", color = "Soak time (hr)") +
+  labs(x = "Fork length (cm)", y = "Proportion retained", color = "Soak time (hr)") +
   theme(legend.position = c(0.8, 0.45),
         legend.key.width=unit(1.5,"line")) +
   guides(linetype = guide_legend(override.aes = list(size = c(0.5, 0.5, 0.5, 1),
@@ -519,3 +540,7 @@ tst <- size_cpue %>% ungroup() %>%
 kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
 dunn
+
+size_cpue %>% ungroup() %>% 
+  filter(Size_category == "Sablefish \u2265 61 cm") %>% 
+  group+

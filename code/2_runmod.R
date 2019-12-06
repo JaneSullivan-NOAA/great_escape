@@ -13,20 +13,32 @@ library(shinystan) # awesome diagnostic tool
 
 # Data ----
 YEAR <- 2019
-bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv"))
+bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv")) %>% 
+  mutate(Treatment = derivedFactor("Control" = Treatment == "Control",
+                                   "8.9 cm" = Treatment == "3.50 in",
+                                   "9.5 cm" = Treatment == "3.75 in",
+                                   "10.2 cm" = Treatment == "4.00 in",
+                                   .default = NA,
+                                   .ordered = TRUE))
 
 # Total sablefish counts by depth and disposition (some pots in a set were
 # dumped due to processing time)
 counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>% 
   mutate(Treatment = derivedFactor("Control" = treatment == "Blue",
-                            "3.50 in" = treatment == "Purple",
-                            "3.75 in" = treatment == "Green",
-                            "4.00 in" = treatment == "Yellow",
+                            "8.9 cm" = treatment == "Purple",
+                            "9.5 cm" = treatment == "Green",
+                            "10.2 cm" = treatment == "Yellow",
                             .default = NA,
                             .ordered = TRUE))
 
 # Selectivity priors based on theoretical selectivity curves
-sprior <- read_csv(paste0("output/theoretical_selectivity_", YEAR, ".csv"))
+sprior <- read_csv(paste0("output/theoretical_selectivity_", YEAR, ".csv")) %>%
+  mutate(Treatment = derivedFactor("Control" = Treatment == "Control",
+                                   "8.9 cm" = Treatment == "8.9 cm",
+                                   "9.5 cm" = Treatment == "9.5 cm",
+                                   "10.2 cm" = Treatment == "10.2 cm",
+                                   .default = NA,
+                                   .ordered = TRUE))
 
 # Summarize counts
 tagged <- counts %>% 
@@ -111,10 +123,18 @@ fit_len <- seq(10, 100, 1)
 # TMB index for s0 and s100 prior length (TMB indexing starts with 0)
 s0_index <- c(0, 3, 7)
 s100_index <- c(20, 24, 27)
+# s100_index <- c(17,22,26)
 
-# Theoretical s50 and slope for each treatment
+# Get starting values from theoretical selectivity curves
 s50_vec <- vector(length = 3)
 slp_vec <- vector(length = 3)
+
+for(i in 1:length(unique(df$Treatment))) {
+  tmp <- sprior %>% filter(Treatment == unique(df$Treatment)[i])
+  fit <- glm(p ~ length, data = tmp, family = "quasibinomial")
+  s50_vec[i] <- - coef(fit)[1] / coef(fit)[2]
+  slp_vec[i] <- coef(fit)[2] / 4 
+}
 
 # Beta prior for s0 and s100
 prior <- function(a, b, label){
@@ -144,29 +164,24 @@ bind_rows(prior(a = s0_alpha, b = s0_beta, label = "s0"),
 
 setwd("~/great_escape/code")
 
+# Ring sizes
+ring_sizes <- 2.54 * c(3.5, 3.75, 4)
+
 # Number of pots per set that were sampled for each treatment
 ntrt_df <- counts %>% 
   group_by(Treatment, set) %>% 
   dplyr::summarise(ntrt = length(which(disposition == "tagged"))) %>% 
   dcast(set ~ Treatment)
 
-# Get starting values from theoretical selectivity curves
-for(i in 1:length(unique(df$Treatment))) {
-  tmp <- sprior %>% filter(Treatment == unique(df$Treatment)[i])
-  fit <- glm(p ~ length, data = tmp, family = "quasibinomial")
-  s50_vec[i] <- - coef(fit)[1] / coef(fit)[2]
-  slp_vec[i] <- coef(fit)[2] / 4 
-}
-
 # TMB data structure
-data <- list(nset = length(unique(df$effort_no)),#17, # # number of sets
+data <- list(nset = length(unique(df$effort_no)), # number of sets
              nlen = length(unique(df$length_bin)), # number of length bins
              ntrt = length(unique(df$Treatment)), # number of treatments
              len = len, # vector of lengths for which there are data
              fit_len = seq(10, 100, 1), #fit_len, # vector of lengths for fitted values
              npot_ctl = ntrt_df$Control, # vector of number of control pots in each set
              npot_trt = as.matrix(select(ntrt_df, matches(paste(unique(df$Treatment), collapse = "|")))), # matrix of number of experimental pots in each set [j,k]
-             ctl_dat = matrix(df$ctl_n[df$Treatment == "3.50 in"], ncol = length(unique(df$effort_no))), #1), # # control pots: matrix of number of fish caught by length bin (row) by set (col)
+             ctl_dat = matrix(df$ctl_n[df$Treatment == "8.9 cm"], ncol = length(unique(df$effort_no))), #1), # # control pots: matrix of number of fish caught by length bin (row) by set (col)
              trt_dat = array(df$exp_n, # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
                              dim = c(length(unique(df$length_bin)),
                                      length(unique(df$effort_no)),
@@ -174,8 +189,8 @@ data <- list(nset = length(unique(df$effort_no)),#17, # # number of sets
              prior_type = 0, # 0 = normal, 1 = beta
              s0_index = s0_index, # Index of length where theoretical curves were 0 and 1 for each treatment
              s100_index = s100_index,
-             sigma_s0 = 0.35,  # priors to constrain selectivity at 0 and 1
-             sigma_s100 = 0.05,
+             sigma_s0 = 0.35,  # priors to constrain selectivity at 0 and 1 0.35
+             sigma_s100 = 0.05, # 0.05
              s0_alpha = s0_alpha,
              s0_beta = s0_beta,
              s100_alpha = s100_alpha,
@@ -230,11 +245,13 @@ obj$report()$set_effect
 phi <- as.data.frame(obj$report()$fit_phi)
 names(phi) <- paste0(unique(df$Treatment))
 phi <- phi %>% mutate(length_bin = len)
-phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi")
+phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi") 
 
 com %>% 
   left_join(phi, by = c("Treatment", "length_bin")) %>% 
-  mutate(resid = combined_p - phi) -> tmp
+  mutate(resid = combined_p - phi,
+         Treatment = factor(Treatment, levels = c("8.9 cm", "9.5 cm", "10.2 cm"), 
+                            ordered = TRUE)) -> tmp
 
 ggplot(tmp) +
   geom_point(aes(x = length_bin, y = combined_p,
@@ -272,16 +289,17 @@ init.fn <- function(){
 
 fit <- tmbstan(obj, chains = cores, open_progress = FALSE, init = init.fn)
 
-pdf(file = "../figures/pairs.pdf", family = "Times", width = 7.08, height = 7.08)#, width = 180, height = 180)# , dpi = 600, units = "mm")
+pdf(file = "../figures/pairs.pdf", width = 7.08, height = 7.08)#, width = 180, height = 180)# , dpi = 600, units = "mm")
 pairs(fit, pars = names(obj$par)) # Pairs plot of the fixed effects
 dev.off()
 
 # Explore the fit use shinystan
-launch_shinystan(fit)
+# launch_shinystan(fit)
 
 ## Can also get ESS and Rhat from rstan::monitor
 mon <- monitor(fit)
 max(mon$Rhat)
+min(mon$Tail_ESS)
 min(mon$Tail_ESS)
 
 # Other methods provided by 'rstan'
@@ -296,9 +314,9 @@ ggsave(filename = "../figures/trace.pdf", width = 180, height = 180, units = "mm
 
 # Extract marginal posteriors easily
 post <- as.matrix(fit)
-hist(post[,'nu[1]'])                     # random effect
-hist(post[,'s50[1]'])                    # fixed effect
-dim(post)
+# hist(post[,'nu[1]'])                     # random effect
+# hist(post[,'s50[1]'])                    # fixed effect
+# dim(post)
 
 # Summary of parameter estimates 
 pars_sum <- summary(fit)$summary
@@ -337,22 +355,49 @@ phi <- phi %>%
 com %>% 
   select(Treatment, length_bin, p = combined_p) %>% 
   left_join(phi, by = c("Treatment", "length_bin")) %>% 
-  mutate(resid = p - mean) -> phi
+  mutate(resid = p - mean,
+         Treatment = factor(Treatment, levels = c("8.9 cm", "9.5 cm", "10.2 cm"), 
+                            ordered = TRUE)) -> phi
 
 # Figures ----
 
+slx %>% 
+  ungroup() %>%
+  mutate(Method = "SELECT") %>% 
+  bind_rows(sprior %>% 
+              rename(mean = p, length_bin = length) %>% 
+              mutate(Method = "Theoretical (May)") %>% 
+              filter(Treatment != "Control" &
+                       length_bin %in% seq(30, 100, 0.4))) %>% 
+  mutate(Treatment = factor(Treatment, levels = c("8.9 cm", "9.5 cm", "10.2 cm"), 
+                            ordered = TRUE),
+         Method = factor(Method, levels = c("Theoretical (May)", "SELECT"),
+                         ordered = TRUE)) -> slx
+
 # Selectivity
-p_slx <- ggplot(slx, aes(x = length_bin, linetype = Treatment, col = Treatment)) +
-  geom_ribbon(aes(ymin = q025, ymax = q975), col = NA, alpha = 0.1, show.legend = FALSE) +
-  geom_line(aes(y = mean, group = Treatment), size = 1) +
-  xlim(c(40, 100)) +
-  scale_colour_manual(values = c("grey70", "grey40", "black")) +
-  # scale_colour_manual(values = c("black", "black", "black")) +
+p_slx <- ggplot() +
+  geom_vline(xintercept = 61, col = "grey90", lty = 5, size = 0.2) + #
+  geom_line(data = slx, aes(x = length_bin, y = mean, linetype = Treatment, 
+                            colour = Method, size = Method,
+                            group = interaction(Method, Treatment))) +
+  geom_ribbon(data = slx %>% 
+                filter(Method == "SELECT"),
+              aes(x = length_bin, group = Treatment, ymin = q025, ymax = q975), 
+              col = NA, alpha = 0.1, show.legend = FALSE) +
+  scale_colour_manual(values = c("grey60", "grey10")) +
   scale_linetype_manual(values = c(1, 2, 3)) +
+  scale_size_manual(values = c(0.4, 0.6)) +
+  annotate("curve", x = 45, y = 0.85, xend = 60.5, yend = 0.99, size = 0.2,
+           colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
+  annotate("text", x = 45, y = 0.8, colour = "grey60", size = 3,
+           label = as.character(expression(paste(italic(L)[50]== "61 cm"))), parse = TRUE) +
   xlim(30, 90) +
-  labs(x = "Length (cm)", y = "Proportion retained") + 
-  theme(legend.position = c(0.8, 0.2),
-        legend.key.width = unit(1.6,"line"))
+  labs(x = "Fork length (cm)", y = "Proportion retained") + 
+  theme(#legend.position = c(0.8, 0.2),
+        # legend.key.width = unit(1.6,"line"),
+        legend.position = c(0.79, 0.3),
+        legend.text=element_text(size = 7),
+        legend.spacing.y = unit(0, "cm"))
 p_slx
 ggsave(filename = "../figures/slx_ci.pdf", plot = p_slx, device = "pdf",
        dpi = 600, units = "mm", width = 80, height = 80)
@@ -364,8 +409,10 @@ p_resid <- ggplot(phi, aes(x = length_bin, y = resid)) +
                size = 0.2, col = "grey") +
   geom_point() +
   facet_wrap(~Treatment, ncol = 1) +
-  labs(x = "Length (cm)", y = "Residuals") +
+  labs(x = "Fork length (cm)", y = "Residuals") +
   theme(strip.text.x = element_text(size=0))
+
+slx %>% filter(Method == "SELECT" & length_bin == 61.0)
 
 # Phi 
 phi <- phi %>% mutate(Treatment2 = Treatment)
@@ -376,7 +423,7 @@ p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) +
               alpha = 0.1, col = NA) +
   geom_point(aes(y = p)) + 
   geom_line(aes(y = mean)) + 
-  labs(x = "Length (cm)", y = "Proportion in treatment pot") +
+  labs(x = "Fork length (cm)", y = "Proportion in treatment pot") +
   geom_text(aes(x = 55, y = 0.6, label = Treatment)) +
   facet_wrap(~ Treatment, ncol = 1) +
   theme(strip.text.x = element_text(size=0))
