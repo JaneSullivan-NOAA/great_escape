@@ -128,11 +128,6 @@ ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".
 
 # Girth adjustments  ----
 
-# Summary of fish girths/weights
-fsh_grth %>% 
-  filter(!is.na(girth) | !is.na(weight)) %>% 
-  summarise(n = n())
-
 # Combine girths from survey and fishery
 comb_grth <- grth %>% 
   filter(Treatment == "Control") %>%
@@ -141,6 +136,13 @@ comb_grth <- grth %>%
   bind_rows(fsh_grth %>% 
               select(length, girth) %>% 
               mutate(Source = "Fishery (Sep/Oct)"))
+
+# Summary of fish girths/weights
+comb_grth %>% 
+  group_by(Source) %>% 
+  # filter(!is.na(girth) | !is.na(weight)) %>% 
+  summarise(n = n()) %>% 
+  write_csv("output/girth_sample_sizes.csv")
 
 fit_simple <- glm(log(girth) ~ log(length), 
                   family = gaussian(link = "identity"), data = comb_grth)
@@ -194,7 +196,7 @@ p1 <- ggplot() +
 p1
 # Caption: A comparison of fitted values and prediction intervals for the
 # regression of girth on length for data collected during the survey in May
-# (grey triangles) and fishery in September and October (black circles).
+# (black circles) and fishery in September and October (grey triangles).
 ggsave(plot = p1, filename = paste0("figures/girth_bysource_", YEAR, ".pdf"), 
        dpi=600, height=180, width=180, units="mm")
 
@@ -445,12 +447,14 @@ ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", 
 # distributed, so we did a Kruskal-Wallis test, which is essentially a
 # nonparameteric one-way ANOVA
 shapiro.test(counts$n_sablefish) # H0: Data are normal
-kruskal.test(n_sablefish ~ Treatment, data = counts) # H0: means of the groups are the same
+kw <- tidy(kruskal.test(n_sablefish ~ Treatment, data = counts)) %>% 
+  mutate(data = "All sizes combined") # H0: means of the groups are the same
+kw
 tst_counts <- counts %>% mutate(Treatment = factor(Treatment, ordered = FALSE))
 # Use Dunn test for adhoc multiple comparisons with a Bonferroni adjusted
 # p-value (P.adj)
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst_counts, method = "bonferroni")
-dunn
+dunn_df <- as.data.frame(dunn[[2]]) %>% mutate(data = "All sizes combined")
 
 mu <- counts %>% 
   filter(Treatment == "Control") %>% 
@@ -478,24 +482,28 @@ counts %>%
 # Split up CPUE data by length. We have a smaller sample size than the combined
 # Two categories: 1) < 61 cm (the overall L50 for SEAK) and 2) >= 61 cm
 
-# Mean size by set
-bio %>% 
-  group_by(Treatment, effort_no) %>% 
-  summarize(n_sablefish = n(),
-            mean_length = mean(length),
-            sd_length = sd(length),
-            se = sd_length/sqrt(n_sablefish)) %>% 
+# Total sample sizes
+counts %>% 
   group_by(Treatment) %>% 
-  summarize(mean_length = mean(mean_length),
-            se = mean(se))
-
-# Mean size overall
-bio %>% 
-  group_by(Treatment) %>% 
-  summarize(n_sablefish = n(),
-            mean_length = mean(length),
-            sd_length = sd(length),
-            se = sd_length/sqrt(n_sablefish))
+  dplyr::summarise(n = sum(n_sablefish)) %>% 
+  bind_rows(counts %>% 
+              mutate(Total = "Total") %>% 
+              group_by(Total) %>% 
+              summarize(n = sum(n_sablefish)) %>% 
+              rename(Treatment = Total)) %>%
+  left_join(bio %>% # Mean size overall
+              group_by(Treatment) %>% 
+              summarize(n_lengths = n(),
+                        mean_length = mean(length),
+                        se_length = sd(length)/sqrt(n_lengths)) %>% 
+              bind_rows(bio %>% 
+                          mutate(Total = "Total") %>% 
+                          group_by(Total) %>% 
+                          summarize(n_lengths = n(),
+                                    mean_length = mean(length),
+                                    se_length = sd(length)/sqrt(n_lengths)) %>% 
+                          rename(Treatment = Total))) %>% 
+  write_csv("output/sample_sizes.csv")
 
 size_cpue <- bio %>% 
   # Remove "stuck" fish b/c they cannot be attributed to a specific pot
@@ -523,16 +531,20 @@ p2
 plot_grid(p, p2, nrow = 2)
 
 ggsave(filename = paste0("figures/cpue_", YEAR, ".pdf"),
-       dpi=600, height=180, width=180, units="mm", device = cairo_pdf)
+       dpi=600, height = 100, width=180, units="mm", device = cairo_pdf)
 
 # All significant
 tst <- size_cpue %>% 
   ungroup() %>% 
   filter(Size_category == "Sablefish < 61 cm") %>% 
   mutate(Treatment = factor(Treatment, ordered = FALSE))
-kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
+tmp <- tidy(kruskal.test(n_sablefish ~ Treatment, data = tst)) %>% 
+  mutate(data = "Sablefish < 61 cm")# H0: means of the groups are the same
+kw <- kw %>% bind_rows(tmp)
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
 dunn
+dunn_df <- dunn_df %>% bind_rows(as.data.frame(dunn[[2]]) %>% mutate(data = "Sablefish < 61 cm"))
+
 tst %>% 
   group_by(Treatment) %>% 
   summarize(median = median(n_sablefish),
@@ -541,12 +553,18 @@ tst %>%
 tst <- size_cpue %>% ungroup() %>% 
   filter(Size_category == "Sablefish \u2265 61 cm") %>% 
   mutate(Treatment = factor(Treatment, ordered = FALSE))
-kruskal.test(n_sablefish ~ Treatment, data = tst) # H0: means of the groups are the same
+tmp <- tidy(kruskal.test(n_sablefish ~ Treatment, data = tst)) %>% 
+  mutate(data = "Sablefish >= 61 cm")# H0: means of the groups are the same
+kw <- kw %>% bind_rows(tmp)
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
 dunn
+dunn_df <- dunn_df %>% bind_rows(as.data.frame(dunn[[2]]) %>% mutate(data = "Sablefish >= 61 cm"))
 
 size_cpue %>% ungroup() %>% 
   filter(Size_category == "Sablefish \u2265 61 cm") %>% 
   group_by(Treatment) %>% 
   summarize(median = median(n_sablefish),
             mean = mean(n_sablefish))
+
+write_csv(kw, "output/kw_tests.csv")
+write_csv(dunn_df, "output/dunn_tests.csv")

@@ -423,7 +423,7 @@ p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) +
               alpha = 0.1, col = NA) +
   geom_point(aes(y = p)) + 
   geom_line(aes(y = mean)) + 
-  labs(x = "Fork length (cm)", y = "Proportion in treatment pot") +
+  labs(x = "Fork length (cm)", y = "Proportion in treatment pots") +
   geom_text(aes(x = 55, y = 0.6, label = Treatment)) +
   facet_wrap(~ Treatment, ncol = 1) +
   theme(strip.text.x = element_text(size=0))
@@ -431,7 +431,7 @@ p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) +
 p <- plot_grid(p_phi, p_resid, ncol = 2)
 p
 ggsave(filename = "../figures/phi_resids.pdf", plot = p, dpi = 600, 
-       device = "pdf", units = "mm", width = 180)
+       device = "pdf", units = "mm", height = 150, width = 180)
 
 # Generalized curves -----
 
