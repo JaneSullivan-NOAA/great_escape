@@ -204,21 +204,25 @@ parameters <- list(dummy = 0,
                    log_delta = log(1),
                    nu = rep(0, length(unique(df$effort_no))))
 
+# Bounds aka uniform priors
+lb <- c(rep(0, 3), rep(0, 3), log(0.1), rep(-5, length(unique(df$effort_no))))
+ub <- c(rep(100, 3), rep(0.9, 3), log(2), rep(5, length(unique(df$effort_no))))
+
 # Compile
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
 # Model 1: Assume fixed delta
-map <- list(dummy = factor(NA),
-            log_delta = factor(NA))
-
-obj <- MakeADFun(data, parameters, map = map, 
-                   DLL = "escape", silent = TRUE,
-                   hessian = TRUE, random = "nu") 
-
-opt <- nlminb(obj$par, obj$fn, obj$gr)
-
-Mod1_AIC <- TMBAIC(opt)
+# map <- list(dummy = factor(NA),
+#             log_delta = factor(NA))
+# 
+# obj <- MakeADFun(data, parameters, map = map, 
+#                    DLL = "escape", silent = TRUE,
+#                    hessian = TRUE, random = "nu") 
+# 
+# opt <- nlminb(obj$par, obj$fn, obj$gr)
+# 
+# Mod1_AIC <- TMBAIC(opt)
 
 # Model 2: Estimate delta
 map <- list(dummy = factor(NA))
@@ -227,11 +231,11 @@ obj <- MakeADFun(data, parameters, map = map,
                  DLL = "escape", silent = TRUE,
                  hessian = TRUE, random = "nu") 
 
-opt <- nlminb(obj$par, obj$fn, obj$gr)
+opt <- nlminb(obj$par, obj$fn, obj$gr, lower = lb, upper = ub)
 
-Mod2_AIC <- TMBAIC(opt)
-
-Mod1_AIC - Mod2_AIC
+# Mod2_AIC <- TMBAIC(opt)
+# 
+# Mod1_AIC - Mod2_AIC
 
 best <- obj$env$last.par.best
 print(best)
@@ -287,19 +291,20 @@ init.fn <- function(){
        log_delta = log(rnorm(1, 1, 0.1)),
        nu = rnorm(length(unique(df$effort_no))))}
 
-fit <- tmbstan(obj, chains = cores, open_progress = FALSE, init = init.fn)
+fit <- tmbstan(obj, chains = cores, open_progress = FALSE, init = init.fn, lower = lb, upper = ub)
 
 pdf(file = "../figures/pairs.pdf", width = 7.08, height = 7.08)#, width = 180, height = 180)# , dpi = 600, units = "mm")
 pairs(fit, pars = names(obj$par)) # Pairs plot of the fixed effects
 dev.off()
 
 # Explore the fit use shinystan
-# launch_shinystan(fit)
+launch_shinystan(fit)
 
 ## Can also get ESS and Rhat from rstan::monitor
 mon <- monitor(fit)
+write_csv(mon, "../output/convergence.csv")
 max(mon$Rhat)
-min(mon$Tail_ESS)
+min(mon$Bulk_ESS)
 min(mon$Tail_ESS)
 
 # Other methods provided by 'rstan'
@@ -314,12 +319,15 @@ ggsave(filename = "../figures/trace.pdf", width = 180, height = 180, units = "mm
 
 # Extract marginal posteriors easily
 post <- as.matrix(fit)
+
 # hist(post[,'nu[1]'])                     # random effect
 # hist(post[,'s50[1]'])                    # fixed effect
 # dim(post)
+write_csv(as.data.frame(post), "../output/posterior_samples.csv")
 
 # Summary of parameter estimates 
 pars_sum <- summary(fit)$summary
+write_csv(as.data.frame(pars_sum), "../output/param_summary.csv")
 
 # Posterior for derived quantities slx and phi. The last column in post is the
 # log-posterior density (lp__) and needs to be dropped via -ncol(post)
@@ -351,6 +359,9 @@ phi <- phi %>%
             median = median(phi),
             q025 = quantile(phi, 0.025),
             q975 = quantile(phi, 0.975))
+
+write_csv(slx, "../output/slx_ci.csv")
+write_csv(phi, "../output/phi_ci.csv")
 
 com %>% 
   select(Treatment, length_bin, p = combined_p) %>% 
