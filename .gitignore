@@ -25,3 +25,6 @@ Thumbs.db
 .RData
 .Ruserdata
 *.Rdata
+
+# Fishery dependent data
+fishery

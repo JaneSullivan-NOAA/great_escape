@@ -1,0 +1,1 @@
+Fishery-dependent data is confidential. In order to obtain data in the data/fishery subdirectory, please contact jane.sullivan1@alaska.gov.
