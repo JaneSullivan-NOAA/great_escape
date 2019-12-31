@@ -8,6 +8,7 @@
 YEAR <- 2019 # study year(s)
 source("code/helper.r")
 library(FSA) # for Dunn test
+library(broom) # tidy
 
 # Bio data
 bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv")) %>% 
@@ -23,6 +24,11 @@ fsh_grth <- read_csv(paste0("data/fsh_bio_", YEAR, ".csv"))
 
 # Effort data 
 effort <- read_csv(paste0("data/pot_effort_", YEAR, ".csv"))
+
+# Data sent to K. Wood for map 20191230
+effort %>% 
+  distinct(effort_no, start_lat, start_lon, end_lat, end_lon) %>% 
+  write_csv("output/station_locations.csv")
 
 # Total sablefish counts by depth and disposition (some pots in a set were
 # dumped due to processing time)
@@ -256,8 +262,8 @@ write_csv(sel, paste0("output/theoretical_selectivity_", YEAR, ".csv"))
 p <- ggplot(sel, aes(x = length, y = p, col = Treatment, 
                      linetype = Treatment, group = Treatment, size = Treatment)) +
   geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
-  geom_vline(xintercept = 61, col = "lightgrey", size = 0.4, lty = 2) +
-  # geom_point(aes(x = 61, y = 0.5), col = "green", size = 1) +
+  geom_vline(xintercept = 63, col = "lightgrey", size = 0.4, lty = 2) +
+  # geom_point(aes(x = 63, y = 0.5), col = "green", size = 1) +
   geom_line() +
   scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
   scale_size_manual(values = c(1.5, 0.7, 0.7, 0.7)) +
@@ -312,7 +318,7 @@ full_sel <- full_sel %>% filter(length %in% seq(40, 100, 0.2))
 p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source, 
                      linetype = Treatment, group = interaction(Source, Treatment))) +
   # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
-  geom_vline(xintercept = 61, col = "grey85", size = 0.5, lty = 5) +
+  geom_vline(xintercept = 63, col = "grey85", size = 0.5, lty = 5) +
   geom_line(size = 0.7) +
   scale_colour_manual(values = c("grey10", "grey60")) +
   # scale_size_manual(values = c(0.7, 1)) +
@@ -320,10 +326,10 @@ p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source,
   theme(legend.position = c(0.79, 0.3),
         legend.text=element_text(size = 7),
         legend.spacing.y = unit(0, "cm")) +
-  annotate("curve", x = 50, y = 0.85, xend = 60.5, yend = 0.99,
+  annotate("curve", x = 50, y = 0.85, xend = 62.5, yend = 1,
            colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
   annotate("text", x = 50, y = 0.8, colour = "grey60", size = 3,
-           label = as.character(expression(paste(italic(L)[50]== "61 cm"))), parse = TRUE) +
+           label = as.character(expression(paste(italic(L)[50]== "63 cm"))), parse = TRUE) +
   xlim(c(40,85))
 
 p3 <- plot_grid(p1, p2, ncol = 2, labels = c("A", "B"))
@@ -331,10 +337,11 @@ p3
 ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".pdf"),
        dpi=600, height = 80, width=180, units="mm")
 
-# Values for the text showing %selected at 61 and lengths at which various 
-full_sel %>% filter(length == 61)
+# Values for the text showing % selected at 63 and lengths at which the
+# treatments are fully selected
+full_sel %>% filter(length == 63)
 full_sel %>%
-  filter(p > 0.99) %>% 
+  filter(p > 0.999) %>% 
   group_by(Source, Treatment) %>% 
   summarize(min(length))
 
@@ -480,7 +487,7 @@ counts %>%
   kable()
 
 # Split up CPUE data by length. We have a smaller sample size than the combined
-# Two categories: 1) < 61 cm (the overall L50 for SEAK) and 2) >= 61 cm
+# Two categories: 1) < 63 cm (L50, Dressel 2009) and 2) >= 63 cm
 
 # Total sample sizes
 counts %>% 
@@ -508,9 +515,8 @@ counts %>%
 size_cpue <- bio %>% 
   # Remove "stuck" fish b/c they cannot be attributed to a specific pot
   filter(pot_no != 99) %>% 
-  mutate(Size_category = ifelse(length < 61, 
-                                "Sablefish < 61 cm", "Sablefish \u2265 61 cm")) %>%
-                                # expression("Sablefish "<" 61 cm"), expression("Sablefish ">="61 cm"))) %>% 
+  mutate(Size_category = ifelse(length < 63, 
+                                "Sablefish < 63 cm", "Sablefish \u2265 63 cm")) %>%
   group_by(Treatment, effort_no, pot_no, Size_category) %>% 
   summarize(n_sablefish = n()) 
 
@@ -536,14 +542,16 @@ ggsave(filename = paste0("figures/cpue_", YEAR, ".pdf"),
 # All significant
 tst <- size_cpue %>% 
   ungroup() %>% 
-  filter(Size_category == "Sablefish < 61 cm") %>% 
+  filter(Size_category == "Sablefish < 63 cm") %>% 
   mutate(Treatment = factor(Treatment, ordered = FALSE))
 tmp <- tidy(kruskal.test(n_sablefish ~ Treatment, data = tst)) %>% 
-  mutate(data = "Sablefish < 61 cm")# H0: means of the groups are the same
+  mutate(data = "Sablefish < 63 cm")# H0: means of the groups are the same
 kw <- kw %>% bind_rows(tmp)
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
 dunn
-dunn_df <- dunn_df %>% bind_rows(as.data.frame(dunn[[2]]) %>% mutate(data = "Sablefish < 61 cm"))
+dunn_df <- dunn_df %>% 
+  bind_rows(as.data.frame(dunn[[2]]) %>% 
+              mutate(data = "Sablefish < 63 cm"))
 
 tst %>% 
   group_by(Treatment) %>% 
@@ -551,17 +559,19 @@ tst %>%
             mean = mean(n_sablefish))
 
 tst <- size_cpue %>% ungroup() %>% 
-  filter(Size_category == "Sablefish \u2265 61 cm") %>% 
+  filter(Size_category == "Sablefish \u2265 63 cm") %>% 
   mutate(Treatment = factor(Treatment, ordered = FALSE))
 tmp <- tidy(kruskal.test(n_sablefish ~ Treatment, data = tst)) %>% 
-  mutate(data = "Sablefish >= 61 cm")# H0: means of the groups are the same
+  mutate(data = "Sablefish >= 63 cm")# H0: means of the groups are the same
 kw <- kw %>% bind_rows(tmp)
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst, method = "bonferroni") # Bonferroni
 dunn
-dunn_df <- dunn_df %>% bind_rows(as.data.frame(dunn[[2]]) %>% mutate(data = "Sablefish >= 61 cm"))
+dunn_df <- dunn_df %>% 
+  bind_rows(as.data.frame(dunn[[2]]) %>% 
+              mutate(data = "Sablefish >= 63 cm"))
 
 size_cpue %>% ungroup() %>% 
-  filter(Size_category == "Sablefish \u2265 61 cm") %>% 
+  filter(Size_category == "Sablefish \u2265 63 cm") %>% 
   group_by(Treatment) %>% 
   summarize(median = median(n_sablefish),
             mean = mean(n_sablefish))

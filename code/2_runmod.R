@@ -385,9 +385,11 @@ slx %>%
          Method = factor(Method, levels = c("Theoretical (May)", "SELECT"),
                          ordered = TRUE)) -> slx
 
+slx %>% filter(length_bin == 63)
+
 # Selectivity
 p_slx <- ggplot() +
-  geom_vline(xintercept = 61, col = "grey90", lty = 5, size = 0.2) + #
+  geom_vline(xintercept = 63, col = "grey90", lty = 5, size = 0.2) + #
   geom_line(data = slx, aes(x = length_bin, y = mean, linetype = Treatment, 
                             colour = Method, size = Method,
                             group = interaction(Method, Treatment))) +
@@ -398,10 +400,10 @@ p_slx <- ggplot() +
   scale_colour_manual(values = c("grey60", "grey10")) +
   scale_linetype_manual(values = c(1, 2, 3)) +
   scale_size_manual(values = c(0.4, 0.6)) +
-  annotate("curve", x = 45, y = 0.85, xend = 60.5, yend = 0.99, size = 0.2,
+  annotate("curve", x = 45, y = 0.85, xend = 62.5, yend = 1, size = 0.2,
            colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
   annotate("text", x = 45, y = 0.8, colour = "grey60", size = 3,
-           label = as.character(expression(paste(italic(L)[50]== "61 cm"))), parse = TRUE) +
+           label = as.character(expression(paste(italic(L)[50]== "63 cm"))), parse = TRUE) +
   xlim(30, 90) +
   labs(x = "Fork length (cm)", y = "Proportion retained") + 
   theme(#legend.position = c(0.8, 0.2),

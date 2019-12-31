@@ -23,7 +23,7 @@ if(!require("ROracle"))   install.packages("ROracle") # database access through 
 # if(!require("tidyr"))   install.packages("tidyr") # reshaping data
 if(!require("knitr"))   install.packages("knitr") # r markdown
 # if(!require("forcats"))   install.packages("forcats") # releveling factors
-# if(!require("cowplot"))   install.packages("cowplot") # plot_grid and so much else
+if(!require("cowplot"))   install.packages("cowplot") # plot_grid and so much else
 # if(!require("ggridges"))   install.packages("ggridges") # length comps
 if(!require("captioner"))   install.packages("captioner") #numbering, ordering, & creating captions for tables and figures
 if(!require("ggpubr"))   install.packages("ggpubr") # QQ plots

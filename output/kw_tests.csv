@@ -1,4 +1,4 @@
 statistic,p.value,parameter,method,data
-77.2,1.20E-16,3,Kruskal-Wallis rank sum test,All sizes combined
-44.6,1.14E-09,3,Kruskal-Wallis rank sum test,Sablefish < 61 cm
-9.6,0.021801993,3,Kruskal-Wallis rank sum test,Sablefish >= 61 cm
+77.2,0.000,3,Kruskal-Wallis rank sum test,All sizes combined
+46.9,0.000,3,Kruskal-Wallis rank sum test,Sablefish < 63 cm
+5.3,0.151,3,Kruskal-Wallis rank sum test,Sablefish >= 63 cm
