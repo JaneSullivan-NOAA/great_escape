@@ -45,10 +45,13 @@ theme_sleek <- function(base_size = 10, base_family = "Helvetica") {
       strip.text.y = element_text(colour = "black"),
       #axis.text = element_text(colour = "grey30"),
       #axis.title = element_text(colour = "grey30"),
-      #legend.title = element_text(colour = "grey30"),#, size = rel(0.9)
+      legend.title = element_text(size = rel(0.9)),
       panel.border = element_rect(fill = NA),#, colour = "grey70", size = 1),
       legend.key.size = unit(0.9, "lines"),
-      #legend.text = element_text(size = rel(0.7)),#, colour = "grey30"),
+      legend.text = element_text(size = 7),
+      legend.key.height = unit(0.6, 'line'),
+      # legend.spacing.y = unit(0, "cm"),
+      # legend.text = element_text(size = rel(0.7)),#, colour = "grey30"),
       legend.key = element_rect(colour = NA, fill = NA),
       legend.background = element_rect(colour = NA, fill = NA)#,
       #plot.title = element_text(colour = "grey30"),#, size = rel(1)
