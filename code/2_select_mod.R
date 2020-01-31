@@ -10,6 +10,7 @@ library(cowplot)
 library(broom) # tidy() clean up parameter estimates
 library(tmbstan) # run mcmc
 library(shinystan) # awesome diagnostic tool
+set.seed(907)
 
 # Data ----
 YEAR <- 2019
@@ -96,7 +97,7 @@ ggplot(df %>% filter, aes(x = length_bin, y = p,
                    group =  Treatment, col = Treatment)) +
   geom_point() +
   facet_wrap(~Treatment) +
-  ylim(c(0,1)) +
+  ylim(c(0, 1)) +
   geom_smooth()
 
 ggplot(com, aes(x = length_bin, y = combined_p,
@@ -123,7 +124,6 @@ fit_len <- seq(10, 100, 1)
 # TMB index for s0 and s100 prior length (TMB indexing starts with 0)
 s0_index <- c(0, 3, 7)
 s100_index <- c(20, 24, 27)
-# s100_index <- c(17,22,26)
 
 # Get starting values from theoretical selectivity curves
 s50_vec <- vector(length = 3)
@@ -291,14 +291,14 @@ init.fn <- function(){
        log_delta = log(rnorm(1, 1, 0.1)),
        nu = rnorm(length(unique(df$effort_no))))}
 
-fit <- tmbstan(obj, chains = cores, open_progress = FALSE, init = init.fn, lower = lb, upper = ub)
+fit <- tmbstan(obj, seed = 1, chains = cores, open_progress = FALSE, init = init.fn, lower = lb, upper = ub)
 
-pdf(file = "../figures/pairs.pdf", width = 7.08, height = 7.08)#, width = 180, height = 180)# , dpi = 600, units = "mm")
+pdf(file = "../figures/pairs.pdf", width = 7.08, height = 7.08/1.618)#, width = 180, height = 180)# , dpi = 600, units = "mm")
 pairs(fit, pars = names(obj$par)) # Pairs plot of the fixed effects
 dev.off()
 
 # Explore the fit use shinystan
-launch_shinystan(fit)
+# launch_shinystan(fit)
 
 ## Can also get ESS and Rhat from rstan::monitor
 mon <- monitor(fit)
@@ -315,7 +315,7 @@ methods(class="stanfit")
 dev.new()
 trace <- traceplot(fit, pars = names(obj$par), inc_warmup = TRUE)
 trace + scale_color_grey() + theme(legend.position = c(0.7,0.15), legend.direction = "horizontal")
-ggsave(filename = "../figures/trace.pdf", width = 180, height = 180, units = "mm")
+ggsave(filename = "../figures/trace.pdf", width = 180, height = 180/1.618, units = "mm")
 
 # Extract marginal posteriors easily
 post <- as.matrix(fit)
@@ -400,10 +400,10 @@ p_slx <- ggplot() +
   scale_colour_manual(values = c("grey60", "grey10")) +
   scale_linetype_manual(values = c(1, 2, 3)) +
   scale_size_manual(values = c(0.4, 0.6)) +
-  annotate("curve", x = 45, y = 0.85, xend = 62.5, yend = 1, size = 0.2,
-           colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
-  annotate("text", x = 45, y = 0.8, colour = "grey60", size = 3,
-           label = as.character(expression(paste(italic(L)[50]== "63 cm"))), parse = TRUE) +
+  # annotate("curve", x = 45, y = 0.85, xend = 62.5, yend = 1, size = 0.2,
+  #          colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
+  # annotate("text", x = 45, y = 0.8, colour = "grey60", size = 3,
+  #          label = as.character(expression(paste(italic(L)[50]== "63 cm"))), parse = TRUE) +
   xlim(30, 90) +
   labs(x = "Fork length (cm)", y = "Proportion retained") + 
   theme(#legend.position = c(0.8, 0.2),
@@ -413,7 +413,7 @@ p_slx <- ggplot() +
         legend.spacing.y = unit(0, "cm"))
 p_slx
 ggsave(filename = "../figures/slx_ci.pdf", plot = p_slx, device = "pdf",
-       dpi = 600, units = "mm", width = 80, height = 80)
+       dpi = 600, units = "mm", width = 80, height = 80/1.618)
 
 # Phi residuals
 p_resid <- ggplot(phi, aes(x = length_bin, y = resid)) +
@@ -425,8 +425,6 @@ p_resid <- ggplot(phi, aes(x = length_bin, y = resid)) +
   labs(x = "Fork length (cm)", y = "Residuals") +
   theme(strip.text.x = element_text(size=0))
 
-slx %>% filter(Method == "SELECT" & length_bin == 61.0)
-
 # Phi 
 phi <- phi %>% mutate(Treatment2 = Treatment)
 p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) + 
@@ -437,14 +435,15 @@ p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) +
   geom_point(aes(y = p)) + 
   geom_line(aes(y = mean)) + 
   labs(x = "Fork length (cm)", y = "Proportion in treatment pots") +
-  geom_text(aes(x = 55, y = 0.6, label = Treatment)) +
+  geom_text(family = "Helvetica", size = 3, fontface = "plain", aes(x = 55, y = 0.6, label = Treatment)) +
   facet_wrap(~ Treatment, ncol = 1) +
+  ylim(c(0,0.7)) +
   theme(strip.text.x = element_text(size=0))
 
 p <- plot_grid(p_phi, p_resid, ncol = 2)
 p
 ggsave(filename = "../figures/phi_resids.pdf", plot = p, dpi = 600, 
-       device = "pdf", units = "mm", height = 150, width = 180)
+       device = "pdf", units = "mm", height = 180/1.618, width = 180)
 
 # Generalized curves -----
 
@@ -490,4 +489,4 @@ p <- ggplot(p_gen, aes(x = length_bin, y = p, col = `Escape ring`, group = `Esca
         legend.spacing.y = unit(0, "cm"))
 p
 ggsave(filename = "../figures/gen_slx.pdf", plot = p, device = "pdf",
-       dpi = 600, units = "mm", width = 80, height = 80)
+       dpi = 600, units = "mm", width = 80, height = 80/1.618)

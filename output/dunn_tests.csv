@@ -1,19 +1,19 @@
-Comparison,Z,P.adj,data,
-10.2 cm - Control,-8.20,0.000,All sizes combined,
-9.5 cm - Control,-6.63,0.000,All sizes combined,
-10.2 cm - 8.9 cm,-4.23,0.000,All sizes combined,
-8.9 cm - Control,-3.98,0.000,All sizes combined,
-8.9 cm - 9.5 cm,2.66,0.047,All sizes combined,
-10.2 cm - 9.5 cm,-1.57,0.702,All sizes combined,
-10.2 cm - Control,-6.17,0.000,Sablefish < 63 cm,
-9.5 cm - Control,-5.12,0.000,Sablefish < 63 cm,
-10.2 cm - 8.9 cm,-3.85,0.001,Sablefish < 63 cm,
-8.9 cm - 9.5 cm,2.80,0.030,Sablefish < 63 cm,
-8.9 cm - Control,-2.27,0.139,Sablefish < 63 cm,
-10.2 cm - 9.5 cm,-1.06,1.000,Sablefish < 63 cm,
-9.5 cm - Control,-2.15,0.187,Sablefish >= 63 cm,
-10.2 cm - Control,-1.74,0.490,Sablefish >= 63 cm,
-10.2 cm - 8.9 cm,-0.51,1.000,Sablefish >= 63 cm,
-10.2 cm - 9.5 cm,0.36,1.000,Sablefish >= 63 cm,
-8.9 cm - 9.5 cm,0.89,1.000,Sablefish >= 63 cm,
-8.9 cm - Control,-1.25,1.000,Sablefish >= 63 cm,
+Comparison,Z,P.unadj,P.adj,data
+10.2 cm - 8.9 cm,-4.225325320889645,2.3859584116085432e-5,1.431575046965126e-4,All sizes combined
+10.2 cm - 9.5 cm,-1.567564072118018,0.11698290233405119,0.7018974140043072,All sizes combined
+8.9 cm - 9.5 cm,2.657761248771627,0.007866159699332229,0.04719695819599337,All sizes combined
+10.2 cm - Control,-8.20195588368516,2.365070969989317e-16,1.4190425819935902e-15,All sizes combined
+8.9 cm - Control,-3.976630562795515,6.989862865284757e-5,4.193917719170854e-4,All sizes combined
+9.5 cm - Control,-6.634391811567142,3.258432391554458e-11,1.955059434932675e-10,All sizes combined
+10.2 cm - 8.9 cm,-3.8536272768831172,1.163807204955801e-4,6.982843229734806e-4,Sablefish < 63 cm
+10.2 cm - 9.5 cm,-1.0609403983113566,0.2887169884357908,1,Sablefish < 63 cm
+8.9 cm - 9.5 cm,2.8037999490625403,0.005050423075783983,0.0303025384547039,Sablefish < 63 cm
+10.2 cm - Control,-6.174565697266972,6.634558962408913e-10,3.9807353774453475e-9,Sablefish < 63 cm
+8.9 cm - Control,-2.2693244339301755,0.02324860372661046,0.13949162235966275,Sablefish < 63 cm
+9.5 cm - Control,-5.117458863698582,3.09679575062884e-7,1.8580774503773038e-6,Sablefish < 63 cm
+10.2 cm - 8.9 cm,-0.5115182385664246,0.6089882206122605,1,Sablefish >= 63 cm
+10.2 cm - 9.5 cm,0.3619615564565275,0.7173807587890575,1,Sablefish >= 63 cm
+8.9 cm - 9.5 cm,0.8916356780928618,0.3725882402297403,1,Sablefish >= 63 cm
+10.2 cm - Control,-1.7411997526402347,0.08164857061125949,0.48989142366755695,Sablefish >= 63 cm
+8.9 cm - Control,-1.2466287843193973,0.21253364234402622,1,Sablefish >= 63 cm
+9.5 cm - Control,-2.154855496698781,0.03117314384442532,0.18703886306655193,Sablefish >= 63 cm

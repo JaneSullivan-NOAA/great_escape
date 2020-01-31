@@ -5,7 +5,10 @@
 
 # Set up ----
 
+set.seed(907)
+
 YEAR <- 2019 # study year(s)
+
 source("code/helper.r")
 library(FSA) # for Dunn test
 library(broom) # tidy
@@ -25,7 +28,7 @@ fsh_grth <- read_csv(paste0("data/fsh_bio_", YEAR, ".csv"))
 # Effort data 
 effort <- read_csv(paste0("data/pot_effort_", YEAR, ".csv"))
 
-# Data sent to K. Wood for map 20191230
+# Data sent to Kellii Wood for map 20191230
 effort %>% 
   distinct(effort_no, start_lat, start_lon, end_lat, end_lon) %>% 
   write_csv("output/station_locations.csv")
@@ -52,7 +55,6 @@ p <- bio %>%
   xlim(40, 90) +
   labs(x = "Fork length (cm)", y = "Count") + 
   theme(legend.position = c(0.8, 0.65))
-
 
 p
 # Caption: Length frequency distribution by escape ring treatment.
@@ -166,6 +168,7 @@ AIC_int - AIC_intslp
 summary(fit_int)
 R2_int <- 1 - (fit_int$deviance / fit_int$null.deviance) # coefficient of variation
 sigma(fit_int) # residual standard deviation
+
 # Get fitted values for girth and prediction intervals (need to exponentiate for figure)
 pred <- comb_grth %>% select(Source, length)
 pred <- ciTools::add_pi(pred, fit_int, alpha = 0.05, names = c("pi_lwr", "pi_upp"))
@@ -205,7 +208,7 @@ p1
 # regression of girth on length for data collected during the survey in May
 # (black circles) and fishery in September and October (grey triangles).
 ggsave(plot = p1, filename = paste0("figures/girth_bysource_", YEAR, ".pdf"), 
-       dpi=600, height=180/1.618, width=180, units="mm")
+       dpi=600, height=80/1.618, width=80, units="mm")
 
 # Theoretical selectivity curves ----
 
@@ -255,12 +258,13 @@ sel <- as.data.frame(sel)
 names(sel) <- levels(bio$Treatment)
 sel <- sel %>% mutate(length = pred_df$length)
 sel <- data.table::melt(data = sel, id.vars = "length", variable.name = "Treatment", value.name = "p")
-sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
 
 # Save output, used to inform prior
 write_csv(sel, paste0("output/theoretical_selectivity_", YEAR, ".csv"))
 
-p <- ggplot(sel, aes(x = length, y = p, col = Treatment, 
+# sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
+
+p <- ggplot(sel %>% filter(length %in% seq(30, 100, 0.5)), aes(x = length, y = p, col = Treatment, 
                      linetype = Treatment, group = Treatment)) +
   geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
   geom_vline(xintercept = 63, col = "lightgrey", size = 0.4, lty = 2) +
@@ -313,6 +317,14 @@ full_sel <- sel %>%
   droplevels() %>% 
   mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep/Oct)"), ordered = TRUE))
 
+# Values for the text showing % selected at 63 and lengths at which the
+# treatments are fully selected
+full_sel %>% filter(length == 63)
+full_sel %>%
+  filter(p > 0.999) %>% 
+  group_by(Source, Treatment) %>% 
+  summarize(min(length))
+
 full_sel <- full_sel %>% filter(length %in% seq(40, 100, 0.6))
 
 p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source, 
@@ -336,14 +348,6 @@ p3 <- plot_grid(p1, p2, ncol = 2, labels = c("A", "B"))
 p3
 ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".pdf"),
        dpi=600, height=180/1.618, width=180, units="mm")
-
-# Values for the text showing % selected at 63 and lengths at which the
-# treatments are fully selected
-full_sel %>% filter(length == 63)
-full_sel %>%
-  filter(p > 0.999) %>% 
-  group_by(Source, Treatment) %>% 
-  summarize(min(length))
 
 # Theoretical w/ soak time ----
 
@@ -441,7 +445,6 @@ p <- ggplot() +
         legend.key.width=unit(1.5,"line")) +
   guides(linetype = guide_legend(override.aes = list(size = c(0.5, 0.5, 0.5, 1),
                                                      colour = c("black", "black", "black", "grey90"))))
-
 p
 
 # Caption: Theoretical selectivity curves for escape ring treatments as a function of soak time.
