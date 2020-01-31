@@ -20,7 +20,7 @@ Escape ring study to estimate length-based selectivity for a sablefish pot gear 
  date     2020-01-31                  
 
 - Packages -----------------------------------------------------
- ! package      * version  date       lib source        
+   package      * version  date       lib source        
    abind          1.4-5    2016-07-21 [1] CRAN (R 3.5.2)
    arm            1.10-1   2018-04-13 [1] CRAN (R 3.5.3)
    assertthat     0.2.1    2019-03-21 [1] CRAN (R 3.5.3)
@@ -133,7 +133,7 @@ Escape ring study to estimate length-based selectivity for a sablefish pot gear 
    tibble         2.1.3    2019-06-06 [1] CRAN (R 3.5.3)
    tidyr          0.8.3    2019-03-01 [1] CRAN (R 3.5.3)
    tidyselect     0.2.5    2018-10-11 [1] CRAN (R 3.5.3)
- D TMB          * 1.7.15   2018-11-09 [1] CRAN (R 3.5.3)
+   TMB          * 1.7.15   2018-11-09 [1] CRAN (R 3.5.3)
    tmbstan      * 1.0.2    2019-05-18 [1] CRAN (R 3.5.3)
    usethis        1.5.1    2019-07-04 [1] CRAN (R 3.5.3)
    utf8           1.1.4    2018-05-24 [1] CRAN (R 3.5.3)
