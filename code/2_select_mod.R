@@ -153,7 +153,7 @@ s100_beta <- 0.1
 bind_rows(prior(a = s0_alpha, b = s0_beta, label = "s0"),
           prior(a = s100_alpha, b = s100_beta, label = "s100")) %>% 
   ggplot(aes(x, y, col = factor(label), linetype = factor(label))) +
-  geom_line(size = 1) +
+  geom_line() +
   scale_colour_grey() +
   ylim(0,10) +
   labs(x = expression(theta), y = expression(paste('p(',theta,')', sep = '')),
@@ -264,7 +264,7 @@ ggplot(tmp) +
   geom_line(aes(x = length_bin, y = phi, group = Treatment, col = Treatment)) #+
 
 ggplot(tmp, aes(x = length_bin, y = resid)) +
-  geom_hline(yintercept = 0, col = "grey", size = 1) +
+  geom_hline(yintercept = 0, col = "grey") +
   geom_segment(aes(x = length_bin, xend = length_bin, y = 0, yend = resid),
                size = 0.2, col = "grey") +
   geom_point() +
@@ -377,12 +377,12 @@ slx %>%
   mutate(Method = "SELECT") %>% 
   bind_rows(sprior %>% 
               rename(mean = p, length_bin = length) %>% 
-              mutate(Method = "Theoretical (May)") %>% 
+              mutate(Method = "Theoretical (May/Jun)") %>% 
               filter(Treatment != "Control" &
                        length_bin %in% seq(30, 100, 0.4))) %>% 
   mutate(Treatment = factor(Treatment, levels = c("8.9 cm", "9.5 cm", "10.2 cm"), 
                             ordered = TRUE),
-         Method = factor(Method, levels = c("Theoretical (May)", "SELECT"),
+         Method = factor(Method, levels = c("Theoretical (May/Jun)", "SELECT"),
                          ordered = TRUE)) -> slx
 
 slx %>% filter(length_bin == 63)
@@ -409,7 +409,7 @@ p_slx <- ggplot() +
   theme(#legend.position = c(0.8, 0.2),
         # legend.key.width = unit(1.6,"line"),
         legend.position = c(0.79, 0.3),
-        legend.text=element_text(size = 7),
+        # legend.text=element_text(size = 7),
         legend.spacing.y = unit(0, "cm"))
 p_slx
 ggsave(filename = "../figures/slx_ci.pdf", plot = p_slx, device = "pdf",
@@ -417,7 +417,7 @@ ggsave(filename = "../figures/slx_ci.pdf", plot = p_slx, device = "pdf",
 
 # Phi residuals
 p_resid <- ggplot(phi, aes(x = length_bin, y = resid)) +
-  geom_hline(yintercept = 0, col = "grey", size = 1) +
+  geom_hline(yintercept = 0, col = "grey") +
   geom_segment(aes(x = length_bin, xend = length_bin, y = 0, yend = resid),
                size = 0.2, col = "grey") +
   geom_point() +
@@ -427,6 +427,7 @@ p_resid <- ggplot(phi, aes(x = length_bin, y = resid)) +
 
 # Phi 
 phi <- phi %>% mutate(Treatment2 = Treatment)
+label_df <- distinct(phi, Treatment)
 p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) + 
     geom_line(data = select(phi, -Treatment),
             aes(y = mean, group = Treatment2), col = "grey") +
@@ -435,7 +436,7 @@ p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) +
   geom_point(aes(y = p)) + 
   geom_line(aes(y = mean)) + 
   labs(x = "Fork length (cm)", y = "Proportion in treatment pots") +
-  geom_text(family = "Helvetica", size = 3, fontface = "plain", aes(x = 55, y = 0.6, label = Treatment)) +
+  geom_text(data = label_df, size = 2.5, fontface = "plain", aes(x = 55, y = 0.6, label = Treatment)) +
   facet_wrap(~ Treatment, ncol = 1) +
   ylim(c(0,0.7)) +
   theme(strip.text.x = element_text(size=0))
@@ -443,7 +444,8 @@ p_phi <- ggplot(phi, aes(x = length_bin, group = Treatment)) +
 p <- plot_grid(p_phi, p_resid, ncol = 2)
 p
 ggsave(filename = "../figures/phi_resids.pdf", plot = p, dpi = 600, 
-       device = "pdf", units = "mm", height = 180/1.618, width = 180)
+       device = "pdf", units = "mm", height = 180, width = 180)
+
 
 # Generalized curves -----
 

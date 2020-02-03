@@ -140,7 +140,7 @@ ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".
 comb_grth <- grth %>% 
   filter(Treatment == "Control") %>%
   select(length, girth) %>% 
-  mutate(Source = "Survey (May)") %>% 
+  mutate(Source = "Survey (May/Jun)") %>% 
   bind_rows(fsh_grth %>% 
               select(length, girth) %>% 
               mutate(Source = "Fishery (Sep/Oct)"))
@@ -179,8 +179,8 @@ pred <- pred %>%
          lower = exp(pi_lwr) * exp(0.5 * sigma(fit_int)^2),
          upper = exp(pi_upp) * exp(0.5 * sigma(fit_int)^2))
 
-pred <- pred %>% mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep/Oct)"), ordered = TRUE))
-comb_grth <- comb_grth %>% mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep/Oct)"), ordered = TRUE))
+pred <- pred %>% mutate(Source = factor(Source, levels = c("Survey (May/Jun)", "Fishery (Sep/Oct)"), ordered = TRUE))
+comb_grth <- comb_grth %>% mutate(Source = factor(Source, levels = c("Survey (May/Jun)", "Fishery (Sep/Oct)"), ordered = TRUE))
 
 p1 <- ggplot() +
   geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper, fill = Source), 
@@ -190,17 +190,16 @@ p1 <- ggplot() +
   scale_colour_manual(values = c("grey10", "grey60")) +
   scale_fill_manual(values = c("grey80", "grey70")) +
   labs(x = "Fork length (cm)", y = "Girth (mm)") +
-  theme(legend.position = c(0.75, 0.2),
-        legend.text=element_text(size = 7)) +
+  theme(legend.position = c(0.75, 0.2)) +
   annotate('text', x = 45, y = 650,
            label = as.character(expression(paste(R^{2}==0.9, ",  ", sigma==0.05))),
-           parse = TRUE, size = 3, hjust = 0) +
+           parse = TRUE, size = 2.5, hjust = 0) +
   annotate('text', x = 45, y = 620,
-           label = as.character(expression(paste("May:  ", italic(hat(G))==4.47*italic(L)^{1.03}))),
-           parse = TRUE, size = 3, hjust = 0) +
+           label = as.character(expression(paste("May/Jun:  ", italic(hat(G))==4.47*italic(L)^{1.03}))),
+           parse = TRUE, size = 2.5, hjust = 0) +
   annotate('text', x = 45, y = 590,
            label = as.character(expression(paste("Sep/Oct:  ", italic(hat(G))==4.47*italic(L)^{1.07}))),
-           parse = TRUE, col = "grey50", size = 3, hjust = 0)
+           parse = TRUE, col = "grey50", size = 2.5, hjust = 0)
   
 p1
 
@@ -226,7 +225,7 @@ summary(fit)
 girth_se <- sigma(fit) # se of girth
 
 pred_df <- data.frame(length = seq(30, 100, 0.01), 
-                      Source = factor(rep("Survey (May)", length(seq(30, 100, 0.01))))) 
+                      Source = factor(rep("Survey (May/Jun)", length(seq(30, 100, 0.01))))) 
                                                                    
 pred_df$pred <- predict(fit_int, pred_df)
 
@@ -310,12 +309,12 @@ sel_grth <- data.table::melt(data = sel_grth, id.vars = "length", variable.name 
 write_csv(sel_grth, paste0("output/theoretical_slx_fishery_", YEAR, ".csv"))
 
 full_sel <- sel %>% 
-  mutate(Source = "Survey (May)") %>% 
+  mutate(Source = "Survey (May/Jun)") %>% 
   bind_rows(sel_grth %>% 
               mutate(Source = "Fishery (Sep/Oct)")) %>% 
   # filter(Treatment != "Control") %>% 
   droplevels() %>% 
-  mutate(Source = factor(Source, levels = c("Survey (May)", "Fishery (Sep/Oct)"), ordered = TRUE))
+  mutate(Source = factor(Source, levels = c("Survey (May/Jun)", "Fishery (Sep/Oct)"), ordered = TRUE))
 
 # Values for the text showing % selected at 63 and lengths at which the
 # treatments are fully selected
@@ -330,13 +329,13 @@ full_sel <- full_sel %>% filter(length %in% seq(40, 100, 0.6))
 p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source, 
                      linetype = Treatment, group = interaction(Source, Treatment))) +
   # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
-  geom_vline(xintercept = 63, col = "grey85", size = 0.5, lty = 5) +
-  geom_line(size = 0.7) +
+  geom_vline(xintercept = 63, col = "grey85", size = 0.2, lty = 5) +
+  geom_line() +
   scale_colour_manual(values = c("grey10", "grey60")) +
   scale_linetype_manual(values = c(1, 2, 3, 4)) +
   labs(x = "Fork length (cm)", y = "Proportion retained") +
   theme(legend.position = c(0.79, 0.3),
-        legend.text=element_text(size = 7),
+        # legend.text=element_text(size = 7),
         legend.spacing.y = unit(0, "cm")) +
   # annotate("curve", x = 50, y = 0.85, xend = 62.5, yend = 1,
   #          colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
@@ -347,7 +346,7 @@ p2
 p3 <- plot_grid(p1, p2, ncol = 2, labels = c("A", "B"))
 p3
 ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".pdf"),
-       dpi=600, height=180/1.618, width=180, units="mm")
+       dpi=600, height=90, width=180, units="mm")
 
 # Theoretical w/ soak time ----
 

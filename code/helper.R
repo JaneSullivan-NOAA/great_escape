@@ -33,9 +33,9 @@ if(!require("ciTools"))   install.packages("ciTools") # GLM prediction intervals
 
 windowsFonts(Times=windowsFont("Helvetica"))
 
-theme_sleek <- function(base_size = 8, base_family = "Helvetica") {
+theme_sleek <- function(base_size = 7, base_family = "Helvetica") {
   half_line <- base_size/2
-  theme_light(base_size = 8, base_family = "Helvetica") +
+  theme_light(base_size = 7, base_family = "Helvetica") +
     theme(
       panel.grid.major = element_blank(),
       panel.grid.minor = element_blank(),
@@ -48,7 +48,7 @@ theme_sleek <- function(base_size = 8, base_family = "Helvetica") {
       legend.title = element_text(size = rel(0.9)),
       panel.border = element_rect(fill = NA),#, colour = "grey70", size = 1),
       legend.key.size = unit(0.9, "lines"),
-      legend.text = element_text(size = 7),
+      legend.text = element_text(size = 6),
       legend.key.height = unit(0.6, 'line'),
       # legend.spacing.y = unit(0, "cm"),
       # legend.text = element_text(size = rel(0.7)),#, colour = "grey30"),
