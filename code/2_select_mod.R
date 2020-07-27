@@ -16,9 +16,9 @@ set.seed(907)
 YEAR <- 2019
 bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv")) %>% 
   mutate(Treatment = derivedFactor("Control" = Treatment == "Control",
-                                   "8.9 cm" = Treatment == "3.50 in",
-                                   "9.5 cm" = Treatment == "3.75 in",
-                                   "10.2 cm" = Treatment == "4.00 in",
+                                   "3.5 in" = Treatment == "3.50 in",
+                                   "3.75 in" = Treatment == "3.75 in",
+                                   "4 in" = Treatment == "4.00 in",
                                    .default = NA,
                                    .ordered = TRUE))
 
@@ -26,18 +26,18 @@ bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv")) %>%
 # dumped due to processing time)
 counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>% 
   mutate(Treatment = derivedFactor("Control" = treatment == "Blue",
-                            "8.9 cm" = treatment == "Purple",
-                            "9.5 cm" = treatment == "Green",
-                            "10.2 cm" = treatment == "Yellow",
+                            "3.5 in" = treatment == "Purple",
+                            "3.75 in" = treatment == "Green",
+                            "4 in" = treatment == "Yellow",
                             .default = NA,
                             .ordered = TRUE))
 
 # Selectivity priors based on theoretical selectivity curves
 sprior <- read_csv(paste0("output/theoretical_selectivity_", YEAR, ".csv")) %>%
   mutate(Treatment = derivedFactor("Control" = Treatment == "Control",
-                                   "8.9 cm" = Treatment == "8.9 cm",
-                                   "9.5 cm" = Treatment == "9.5 cm",
-                                   "10.2 cm" = Treatment == "10.2 cm",
+                                   "3.5 in" = Treatment == "3.5 in",
+                                   "3.75 in" = Treatment == "3.75 in",
+                                   "4 in" = Treatment == "4 in",
                                    .default = NA,
                                    .ordered = TRUE))
 
@@ -181,7 +181,7 @@ data <- list(nset = length(unique(df$effort_no)), # number of sets
              fit_len = seq(10, 100, 1), #fit_len, # vector of lengths for fitted values
              npot_ctl = ntrt_df$Control, # vector of number of control pots in each set
              npot_trt = as.matrix(select(ntrt_df, matches(paste(unique(df$Treatment), collapse = "|")))), # matrix of number of experimental pots in each set [j,k]
-             ctl_dat = matrix(df$ctl_n[df$Treatment == "8.9 cm"], ncol = length(unique(df$effort_no))), #1), # # control pots: matrix of number of fish caught by length bin (row) by set (col)
+             ctl_dat = matrix(df$ctl_n[df$Treatment == "3.5 in"], ncol = length(unique(df$effort_no))), #1), # # control pots: matrix of number of fish caught by length bin (row) by set (col)
              trt_dat = array(df$exp_n, # experimental pots: matrix of number of fish caught by length bin (row) by set (col)
                              dim = c(length(unique(df$length_bin)),
                                      length(unique(df$effort_no)),
@@ -254,7 +254,7 @@ phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", val
 com %>% 
   left_join(phi, by = c("Treatment", "length_bin")) %>% 
   mutate(resid = combined_p - phi,
-         Treatment = factor(Treatment, levels = c("8.9 cm", "9.5 cm", "10.2 cm"), 
+         Treatment = factor(Treatment, levels = c("3.5 in", "3.75 in", "4 in"), 
                             ordered = TRUE)) -> tmp
 
 ggplot(tmp) +
@@ -367,7 +367,7 @@ com %>%
   select(Treatment, length_bin, p = combined_p) %>% 
   left_join(phi, by = c("Treatment", "length_bin")) %>% 
   mutate(resid = p - mean,
-         Treatment = factor(Treatment, levels = c("8.9 cm", "9.5 cm", "10.2 cm"), 
+         Treatment = factor(Treatment, levels = c("3.5 in", "3.75 in", "4 in"), 
                             ordered = TRUE)) -> phi
 
 # Figures ----
@@ -380,7 +380,7 @@ slx %>%
               mutate(Method = "Theoretical (May/Jun)") %>% 
               filter(Treatment != "Control" &
                        length_bin %in% seq(30, 100, 0.4))) %>% 
-  mutate(Treatment = factor(Treatment, levels = c("8.9 cm", "9.5 cm", "10.2 cm"), 
+  mutate(Treatment = factor(Treatment, levels = c("3.5 in", "3.75 in", "4 in"), 
                             ordered = TRUE),
          Method = factor(Method, levels = c("Theoretical (May/Jun)", "SELECT"),
                          ordered = TRUE)) -> slx
@@ -389,31 +389,32 @@ slx %>% filter(length_bin == 63)
 
 # Selectivity
 p_slx <- ggplot() +
-  geom_vline(xintercept = 63, col = "grey90", lty = 5, size = 0.2) + #
-  geom_line(data = slx, aes(x = length_bin, y = mean, linetype = Treatment, 
-                            colour = Method, size = Method,
-                            group = interaction(Method, Treatment))) +
+  geom_vline(xintercept = 63, col = "darkgrey", lty = 5, size = 0.2) + #
+  geom_line(data = slx, aes(x = length_bin, y = mean, linetype = Method, 
+                            colour = Treatment, 
+                            group = interaction(Method, Treatment)),
+            size = 1) +
   geom_ribbon(data = slx %>% 
                 filter(Method == "SELECT"),
-              aes(x = length_bin, group = Treatment, ymin = q025, ymax = q975), 
-              col = NA, alpha = 0.1, show.legend = FALSE) +
-  scale_colour_manual(values = c("grey60", "grey10")) +
-  scale_linetype_manual(values = c(1, 2, 3)) +
-  scale_size_manual(values = c(0.4, 0.6)) +
-  # annotate("curve", x = 45, y = 0.85, xend = 62.5, yend = 1, size = 0.2,
-  #          colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
-  # annotate("text", x = 45, y = 0.8, colour = "grey60", size = 3,
-  #          label = as.character(expression(paste(italic(L)[50]== "63 cm"))), parse = TRUE) +
+              aes(x = length_bin, fill = Treatment,  group = Treatment, ymin = q025, ymax = q975), 
+               alpha = 0.1, col = NA, show.legend = FALSE) +
+  scale_colour_manual(values = rainbow_cols[2:4], guide = FALSE) +
+  scale_fill_manual(values = rainbow_cols[2:4], guide = FALSE) +
+  # scale_linetype_manual(values = c(1, 2, 3)) +
+  annotate("curve", x = 45, y = 0.85, xend = 62.5, yend = 1, size = 1,
+           colour = "black", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
+  annotate("text", x = 45, y = 0.8, colour = "black", size = 4,
+           label = as.character(expression(paste(italic(L)[50]== "63 cm"))), parse = TRUE) +
   xlim(30, 90) +
   labs(x = "Fork length (cm)", y = "Proportion retained") + 
   theme(#legend.position = c(0.8, 0.2),
         # legend.key.width = unit(1.6,"line"),
-        legend.position = c(0.79, 0.3),
+        legend.position = c(0.79, 0.2),
         # legend.text=element_text(size = 7),
         legend.spacing.y = unit(0, "cm"))
 p_slx
-ggsave(filename = "../figures/slx_ci.pdf", plot = p_slx, device = "pdf",
-       dpi = 600, units = "mm", width = 80, height = 80/1.618)
+ggsave(filename = "../figures/slx_ci.png", plot = p_slx,
+       dpi = 600, units = "in", width = 6, height = 6/1.618)
 
 # Phi residuals
 p_resid <- ggplot(phi, aes(x = length_bin, y = resid)) +
@@ -465,6 +466,8 @@ coef(slp_lm)
 summary(slp_lm)
 
 ring_vec <- seq(8.5, 10.5, 0.4)
+# 3 7/8 widely available size
+ring_vec <- c(3.875*2.54)
 
 p_gen <- matrix(nrow = length(fit_len), ncol = length(ring_vec))
 

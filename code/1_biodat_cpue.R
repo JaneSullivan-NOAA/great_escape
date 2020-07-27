@@ -13,14 +13,22 @@ source("code/helper.r")
 library(FSA) # for Dunn test
 library(broom) # tidy
 
+rainbow_cols <- c("#00B0F0", "#7030A0", "#92D050", "#FFC000")
+
 # Bio data
 bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv")) %>% 
+  # mutate(Treatment = derivedFactor("Control" = Treatment == "Control",
+  #                           "8.9 cm" = Treatment == "3.50 in",
+  #                           "9.5 cm" = Treatment == "3.75 in",
+  #                           "10.2 cm" = Treatment == "4.00 in",
+  #                           .default = NA,
+  #                           .ordered = TRUE))
   mutate(Treatment = derivedFactor("Control" = Treatment == "Control",
-                            "8.9 cm" = Treatment == "3.50 in",
-                            "9.5 cm" = Treatment == "3.75 in",
-                            "10.2 cm" = Treatment == "4.00 in",
-                            .default = NA,
-                            .ordered = TRUE))
+                                   "3.5 in" = Treatment == "3.50 in",
+                                   "3.75 in" = Treatment == "3.75 in",
+                                   "4 in" = Treatment == "4.00 in",
+                                   .default = NA,
+                                   .ordered = TRUE))
 
 # Fishery girth data (collected in order to account for grith seasonal adjustments)
 fsh_grth <- read_csv(paste0("data/fsh_bio_", YEAR, ".csv")) 
@@ -36,10 +44,16 @@ effort %>%
 # Total sablefish counts by depth and disposition (some pots in a set were
 # dumped due to processing time)
 counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>% 
+  # mutate(Treatment = derivedFactor("Control" = treatment == "Blue",
+  #                                  "8.9 cm" = treatment == "Purple",
+  #                                  "9.5 cm" = treatment == "Green",
+  #                                  "10.2 cm" = treatment == "Yellow",
+  #                                  .default = NA,
+  #                                  .ordered = TRUE))
   mutate(Treatment = derivedFactor("Control" = treatment == "Blue",
-                                   "8.9 cm" = treatment == "Purple",
-                                   "9.5 cm" = treatment == "Green",
-                                   "10.2 cm" = treatment == "Yellow",
+                                   "3.5 in" = treatment == "Purple",
+                                   "3.75 in" = treatment == "Green",
+                                   "4 in" = treatment == "Yellow",
                                    .default = NA,
                                    .ordered = TRUE))
 
@@ -48,17 +62,19 @@ counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>%
 p <- bio %>% 
   filter(!is.na(Treatment) & between(length, 40, 90)) %>%
   droplevels() %>%
-  ggplot(aes(x = length, colour = Treatment, linetype = Treatment)) + 
-  geom_freqpoly() +
-  scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
-  scale_linetype_manual(values = c(1, 2, 3, 4)) +
+  ggplot(aes(x = length, colour = Treatment)) + 
+  geom_freqpoly(size = 1) +
+  # scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
+  scale_colour_manual(values = rainbow_cols) +
+  # scale_linetype_manual(values = c(1, 2, 3, 4)) +
   xlim(40, 90) +
   labs(x = "Fork length (cm)", y = "Count") + 
-  theme(legend.position = c(0.8, 0.65))
+  theme(legend.position = "none")
 
 p
 # Caption: Length frequency distribution by escape ring treatment.
 ggsave(plot = p, filename = paste0("figures/size_freq_", YEAR, ".pdf"), dpi=600, height=80/1.618, width=80, units="mm")
+ggsave(plot = p, filename = paste0("figures/size_freq_", YEAR, ".png"), dpi=600, height=6/1.618, width=6, units="in")
 
 # Girth outliers  ----
 
@@ -76,7 +92,7 @@ p <- ggplot(grth, aes(x = length, y = girth, col = Outlier, shape = Outlier)) +
   labs(x = "Fork length (cm)", y = "Girth (mm)") +
   theme(legend.position = c(0.8, 0.2))
 p
-ggsave(plot = p, filename = paste0("figures/girth_outliers_", YEAR, ".pdf"), 
+ggsave(plot = p, filename = paste0("figures/girth_outliers_", YEAR, ".png"), 
        dpi=600, height=80/1.618, width=80, units="mm")
 
 grth <- grth %>% filter(Outlier != "Outlier") %>% 
@@ -88,7 +104,7 @@ p <- ggplot(grth, aes(x = length, y = girth)) +
   facet_wrap(~ Treatment) +
   labs(x = "Fork length (cm)", y = "Girth (mm)")
 p
-ggsave(plot = p, filename = paste0("figures/girth_bytreatment_", YEAR, ".pdf"), 
+ggsave(plot = p, filename = paste0("figures/girth_bytreatment_", YEAR, ".png"), 
        dpi=600, height=180/1.618, width=180, units="mm")
 
 # Girth by treatment ----
@@ -131,7 +147,7 @@ p <- ggplot() +
   facet_wrap(~ Treatment) +
   labs(x = "Fork length (cm)", y = "Girth (mm)") 
 p
-ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".pdf"), 
+ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".png"), 
        dpi=600, height=180/1.618, width=180, units="mm")
 
 # Girth adjustments  ----
@@ -182,33 +198,62 @@ pred <- pred %>%
 pred <- pred %>% mutate(Source = factor(Source, levels = c("Survey (May/Jun)", "Fishery (Sep/Oct)"), ordered = TRUE))
 comb_grth <- comb_grth %>% mutate(Source = factor(Source, levels = c("Survey (May/Jun)", "Fishery (Sep/Oct)"), ordered = TRUE))
 
+src_cols <- c("#ffd700", 	"#ff5700")
 p1 <- ggplot() +
   geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper, fill = Source), 
               alpha = 0.3) +
   geom_point(data = comb_grth, aes(x = length, y = girth, colour = Source, shape = Source), size = 0.8, alpha = 0.7) +
-  geom_line(data = pred, aes(x = length, y = fitted, group = Source, colour = Source, linetype = Source)) +
+  geom_line(data = pred, aes(x = length, y = fitted, group = Source, 
+                             colour = Source, linetype = Source),
+            size = 1) +
   scale_colour_manual(values = c("grey10", "grey60")) +
   scale_fill_manual(values = c("grey80", "grey70")) +
+  # scale_colour_manual(values = src_cols) +
+  # scale_fill_manual(values = src_cols) +
   labs(x = "Fork length (cm)", y = "Girth (mm)") +
   theme(legend.position = c(0.75, 0.2)) +
-  annotate('text', x = 45, y = 650,
+  annotate('text', x = 45, y = 630,
            label = as.character(expression(paste(R^{2}==0.9, ",  ", sigma==0.05))),
-           parse = TRUE, size = 2.5, hjust = 0) +
-  annotate('text', x = 45, y = 620,
-           label = as.character(expression(paste("May/Jun:  ", italic(hat(G))==4.47*italic(L)^{1.03}))),
-           parse = TRUE, size = 2.5, hjust = 0) +
-  annotate('text', x = 45, y = 590,
-           label = as.character(expression(paste("Sep/Oct:  ", italic(hat(G))==4.47*italic(L)^{1.07}))),
-           parse = TRUE, col = "grey50", size = 2.5, hjust = 0)
+           parse = TRUE, size = 4, hjust = 0) #+ # size = 2.5
+  # annotate('text', x = 45, y = 620,
+  #          label = as.character(expression(paste("May/Jun:  ", italic(hat(G))==4.47*italic(L)^{1.03}))),
+  #          parse = TRUE, size = 4, hjust = 0) + # size = 2.5
+  # annotate('text', x = 45, y = 590,
+  #          label = as.character(expression(paste("Sep/Oct:  ", italic(hat(G))==4.47*italic(L)^{1.07}))),
+  #          parse = TRUE, col = "grey50", size = 4, hjust = 0)
   
 p1
 
 # Caption: A comparison of fitted values and prediction intervals for the
 # regression of girth on length for data collected during the survey in May
 # (black circles) and fishery in September and October (grey triangles).
-ggsave(plot = p1, filename = paste0("figures/girth_bysource_", YEAR, ".pdf"), 
+ggsave(plot = p1, filename = paste0("figures/girth_bysource_", YEAR, ".png"), 
        dpi=600, height=80/1.618, width=80, units="mm")
+ggsave(plot = p1, filename = paste0("figures/girth_bysource_", YEAR, ".png"), 
+       dpi=600, height=5/1.618, width=5, units="in")
 
+# Just the survey
+
+p <- ggplot() +
+  geom_ribbon(data = pred %>% 
+                filter(Source ==  "Survey (May/Jun)"),
+              aes(x = length, ymin = lower, ymax = upper), 
+              alpha = 0.1) +
+  geom_point(data = comb_grth%>% 
+               filter(Source ==  "Survey (May/Jun)"),
+             aes(x = length, y = girth), size = 1) +
+  geom_line(data = pred%>% 
+              filter(Source ==  "Survey (May/Jun)"), 
+            aes(x = length, y = fitted),
+            size = 1) +
+  # scale_colour_manual(values = c("grey10", "grey60")) +
+  # scale_fill_manual(values = c("grey80", "grey70")) +
+  # scale_colour_manual(values = src_cols) +
+  # scale_fill_manual(values = src_cols) +
+  labs(x = "Fork length (cm)", y = "Girth (mm)")
+p
+ggsave(plot = p, filename = paste0("figures/girth_reg_srv_", YEAR, ".png"), 
+       dpi=600, height=6/1.618, width=6, units="in")
 # Theoretical selectivity curves ----
 
 # Approach similar to Treble et al. 1998 used for Southern rock lobster in
@@ -264,20 +309,24 @@ write_csv(sel, paste0("output/theoretical_selectivity_", YEAR, ".csv"))
 # sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
 
 p <- ggplot(sel %>% filter(length %in% seq(30, 100, 0.5)), aes(x = length, y = p, col = Treatment, 
-                     linetype = Treatment, group = Treatment)) +
+                     # linetype = Treatment, 
+                     group = Treatment)) +
   geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
   geom_vline(xintercept = 63, col = "lightgrey", size = 0.4, lty = 2) +
   # geom_point(aes(x = 63, y = 0.5), col = "green", size = 1) +
-  geom_line() +
-  scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
-  scale_linetype_manual(values = c(1, 1, 2, 3)) +
+  geom_line(size = 1) +
+  # scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
+  scale_colour_manual(values = rainbow_cols) +
+  # scale_linetype_manual(values = c(1, 1, 2, 3)) +
   labs(x = "Fork length (cm)", y = "Proportion retained") +
-  theme(legend.position = c(0.8, 0.3)) +
+  theme(legend.position = "none") +#c(0.8, 0.3)) +
   xlim(c(35,85))
 p
 # Caption: Theoretical selectivity curves for control and escape ring treatments.
-ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".pdf"),
+ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".png"),
        dpi=600, height=80/1.618, width=80, units="mm")
+ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_", YEAR, ".png"),
+       dpi=600, height=6/1.618, width=6, units="in")
 
 # Theoretical with fishery girth ----
 
@@ -326,15 +375,15 @@ full_sel %>%
 
 full_sel <- full_sel %>% filter(length %in% seq(40, 100, 0.6))
 
-p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source, 
-                     linetype = Treatment, group = interaction(Source, Treatment))) +
+p2 <- ggplot(full_sel, aes(x = length, y = p, col = Treatment, 
+                     linetype = Source, group = interaction(Source, Treatment))) +
   # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
-  geom_vline(xintercept = 63, col = "grey85", size = 0.2, lty = 5) +
-  geom_line() +
-  scale_colour_manual(values = c("grey10", "grey60")) +
-  scale_linetype_manual(values = c(1, 2, 3, 4)) +
+  geom_vline(xintercept = 63, col = "grey65", size = 0.2, lty = 5) +
+  geom_line(size = 1) +
+  scale_colour_manual(values = rainbow_cols, guide = FALSE) +
+  # scale_linetype_manual(values = c(1, 2, 3, 4)) +
   labs(x = "Fork length (cm)", y = "Proportion retained") +
-  theme(legend.position = c(0.79, 0.3),
+  theme(legend.position = c(0.79, 0.2),
         # legend.text=element_text(size = 7),
         legend.spacing.y = unit(0, "cm")) +
   # annotate("curve", x = 50, y = 0.85, xend = 62.5, yend = 1,
@@ -343,10 +392,15 @@ p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source,
   #          label = as.character(expression(paste(italic(L)[50]== "63 cm"))), parse = TRUE) +
   xlim(c(40,85))
 p2
+ggsave(plot = p2, filename = paste0("figures/theoretical_sel_fsh_srv_", YEAR, ".png"),
+       dpi=600, height=6/1.618, width=6, units="in")
+
 p3 <- plot_grid(p1, p2, ncol = 2, labels = c("A", "B"))
 p3
-ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".pdf"),
+ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".png"),
        dpi=600, height=90, width=180, units="mm")
+ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".png"),
+       dpi=600, height=6.5/1.618, width=6.5, units="in")
 
 # Theoretical w/ soak time ----
 
@@ -360,14 +414,14 @@ x95 <- 40
 soak <- soak %>% 
   mutate(p = 1 / (1 + exp(-log(19) * (hr - x50) / (x95 - x50))))
 p <- ggplot(soak, aes(x = hr, y = p)) +
-  geom_line() +
+  geom_line(size = 1, col = "#f6546a") +
   ylim(c(0, 1)) +
   labs(x = "\nSoak time (hr)",
        y = "Probability of finding escape ring\n")
 p
 # Caption: Theoretical probability of a fish finding an escape ring as a function of soak time.
-ggsave(plot = p, filename = paste0("figures/escape_prob_soaktime.pdf"),
-       dpi=600, height=80/1.618, width=80, units="mm")
+ggsave(plot = p, filename = paste0("figures/escape_prob_soaktime.png"),
+       dpi=600, height=6/1.618, width=6, units="in")
 
 pred_df <- data.frame(length = seq(30, 100, 0.5))
 pred_df$pred <- predict(fit, pred_df)
@@ -433,22 +487,25 @@ sel %>%
 p <- ggplot() +
   # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
   # geom_vline(xintercept = 61, col = "lightgrey", size = 0.4, lty = 2) +
-  geom_line(data = ctl, aes(x = length, y = p, lty = Treatment), colour = "grey90", size = 1) +
-  geom_line(data = sel, aes(x = length, y = p, col = factor(soak_time), 
-                     linetype = Treatment, group = interaction(Treatment, soak_time)), size = 0.5) +
+  geom_line(data = ctl, aes(x = length, y = p), colour = rainbow_cols[1], size = 1) +
+  geom_line(data = sel, aes(x = length, y = p, col = Treatment, 
+                     linetype = factor(soak_time), 
+                     group = interaction(Treatment, soak_time)), size = 1) +
   # geom_point(aes(x = 61, y = 0.5), col = "green", size = 1.5) +
-  scale_colour_manual(values = c("grey70", "black")) +
+  scale_colour_manual(values = rainbow_cols[2:4], guide = FALSE) +
   scale_linetype_manual(values = c(1, 2, 3, 1)) +
-  labs(x = "Fork length (cm)", y = "Proportion retained", color = "Soak time (hr)") +
-  theme(legend.position = c(0.8, 0.45),
-        legend.key.width=unit(1.5,"line")) +
-  guides(linetype = guide_legend(override.aes = list(size = c(0.5, 0.5, 0.5, 1),
-                                                     colour = c("black", "black", "black", "grey90"))))
+  labs(x = "Fork length (cm)", y = "Proportion retained", lty = "Soak time (hr)") +
+  theme(legend.position = c(0.8, 0.2),
+        legend.key.width=unit(1.5,"line"))# +
+  # guides(linetype = guide_legend(override.aes = list(size = c(0.5, 0.5, 0.5, 1),
+                                                     # colour = c("black", "black", "black", "grey90"))))
 p
 
 # Caption: Theoretical selectivity curves for escape ring treatments as a function of soak time.
-ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", YEAR, ".pdf"),
+ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", YEAR, ".png"),
        dpi=600, height=180/1.618, width=180, units="mm")
+ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", YEAR, ".png"),
+       dpi=600, height=6/1.618, width=6, units="in")
 
 # Capture efficieny ----
 
@@ -522,16 +579,19 @@ counts %>%
   mutate(Size_category = "All sizes combined") %>% 
   bind_rows(size_cpue) -> tmp
 
-p <- ggplot(tmp, aes(x = Treatment, y = n_sablefish)) +
+p <- ggplot(tmp, aes(x = Treatment, y = n_sablefish, fill = Treatment)) +
+  scale_fill_manual(values = rainbow_cols, guide = FALSE) +
   # If the notches don't overlap this suggests the means are different
-  geom_boxplot(notch = TRUE) +
-  geom_hline(data = mu, aes(yintercept = mu), col = "grey", lty = 2) +
-  facet_wrap(~ Size_category, ncol = 1, scales = "free_y") + 
-  labs(x = NULL, y = "CPUE")
+  geom_boxplot(notch = TRUE, alpha = 0.8) +
+  geom_hline(data = mu, aes(yintercept = mu), col = "black", lty = 2) +
+  facet_wrap(~ Size_category, ncol = 3, scales = "free_y") + 
+  labs(x = NULL, y = "CPUE (sablefish/pot)")
 p
 
-ggsave(filename = paste0("figures/cpue_", YEAR, ".pdf"),
-       dpi=600, height=3*(80/1.618), width=80, units="mm", device = cairo_pdf)
+ggsave(filename = paste0("figures/cpue_", YEAR, ".png"),
+       dpi=600, height=3*(80/1.618), width=80, units="mm", device = cairo_png)
+ggsave(filename = paste0("figures/cpue_", YEAR, ".png"),
+       dpi=600, height=5, width=9, units="in")
 
 # All significant
 tst <- size_cpue %>% 

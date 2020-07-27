@@ -155,6 +155,8 @@ Type objective_function<Type>::operator() ()
   nll += set_effect;
 
   // Priors to constrain selectivity curve at 0 and 100
+  
+  // Initialize values
   Type s0 = 0;
   Type prior_s0 = 0;
   Type s100 = 0;
@@ -162,6 +164,9 @@ Type objective_function<Type>::operator() ()
   
   for (int j = 0; j < nset; j++) {
     for (int k = 0; k < ntrt; k++) {
+      
+      // Extract selectivity proportions by prior lengths at 0 and 100% selected
+      // by treatment
       s0 = fit_slx(s0_index(k),k);
       s100 = fit_slx(s100_index(k),k);
       
