@@ -6,14 +6,26 @@ All sizes combined,8.9 cm - 9.5 cm,0.04719695819599337
 All sizes combined,8.9 cm - Control,4.193917719170854e-4
 All sizes combined,9.5 cm - Control,1.955059434932675e-10
 Sablefish < 63 cm,10.2 cm - 8.9 cm,0.0010849917460703886
+Sablefish < 63 cm,10.2 cm - 8.9 cm,0.0010849917460703886
+Sablefish < 63 cm,10.2 cm - 9.5 cm,1
 Sablefish < 63 cm,10.2 cm - 9.5 cm,1
 Sablefish < 63 cm,10.2 cm - Control,1.6981029501623721e-9
+Sablefish < 63 cm,10.2 cm - Control,1.6981029501623721e-9
+Sablefish < 63 cm,8.9 cm - 9.5 cm,0.04517421219489965
 Sablefish < 63 cm,8.9 cm - 9.5 cm,0.04517421219489965
 Sablefish < 63 cm,8.9 cm - Control,0.0677449936702085
+Sablefish < 63 cm,8.9 cm - Control,0.0677449936702085
+Sablefish < 63 cm,9.5 cm - Control,9.915784042958093e-7
 Sablefish < 63 cm,9.5 cm - Control,9.915784042958093e-7
 Sablefish >= 63 cm,10.2 cm - 8.9 cm,0.705433490006686
+Sablefish >= 63 cm,10.2 cm - 8.9 cm,0.705433490006686
+Sablefish >= 63 cm,10.2 cm - 9.5 cm,1
 Sablefish >= 63 cm,10.2 cm - 9.5 cm,1
 Sablefish >= 63 cm,10.2 cm - Control,0.00873553396793419
+Sablefish >= 63 cm,10.2 cm - Control,0.00873553396793419
+Sablefish >= 63 cm,8.9 cm - 9.5 cm,1
 Sablefish >= 63 cm,8.9 cm - 9.5 cm,1
 Sablefish >= 63 cm,8.9 cm - Control,0.6525483564633895
+Sablefish >= 63 cm,8.9 cm - Control,0.6525483564633895
+Sablefish >= 63 cm,9.5 cm - Control,0.07222753673834749
 Sablefish >= 63 cm,9.5 cm - Control,0.07222753673834749
