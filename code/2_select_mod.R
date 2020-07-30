@@ -50,7 +50,7 @@ tagged <- counts %>%
 # Length bins
 
 # Bin structure used in Haist et al 2004. Examine lengths for which we believe
-# the control pot is 100% selected
+# the control pot is 100% selected. Bins are defined such that anything less than 
 bio <- bio %>% 
   filter(!c(length < 50)) %>%
   mutate(length2 = ifelse(length < 51, 51, ifelse(length > 79, 79, length)),
@@ -106,31 +106,53 @@ ggplot(com, aes(x = length_bin, y = combined_p,
   ylim(c(0,1)) +
   geom_smooth()
 
-# Priors ----
-# Priors on 0 and 100% retention:
-filter(sprior, p == 1 & Treatment != "Control") %>% 
+# Priors ---- Priors on 0 and 100% retention. Include bin definitions to make
+# indexing a little easier
+prior_100 <- filter(sprior, p == 1 & Treatment != "Control") %>% 
   group_by(Treatment) %>% 
   filter(length == min(length)) %>% 
-  select(Treatment, length)
+  select(Treatment, length) %>%
+  mutate(length2 = ifelse(length < 51, 51, ifelse(length > 79, 79, length)),
+         length_bin = cut(length2, breaks = seq(50.9, 79.9, 1), 
+                          labels = paste(seq(51, 79, 1)))) %>% 
+  select(-length2)
 
-filter(sprior, p < 0.01 & Treatment != "Control") %>%
+prior_0 <- filter(sprior, p < 0.01 & Treatment != "Control") %>%
   group_by(Treatment) %>% 
   filter(length == max(length)) %>% 
-  select(Treatment, length)
+  select(Treatment, length) %>% 
+  filter(!c(length < 50)) %>%
+  mutate(length2 = ifelse(length < 51, 51, ifelse(length > 79, 79, length)),
+         length_bin = cut(length2, breaks = seq(50.9, 79.9, 1), 
+                          labels = paste(seq(51, 79, 1)))) %>% 
+  select(-length2)
+
+tmb_index <- data.frame(length_bin = sort(unique(df$length_bin)),
+                        index = 0:(length(sort(unique(df$length_bin)))-1))
+
+
+
 
 len <- sort(unique(df$length_bin))
 fit_len <- seq(10, 100, 1)
 
 # TMB index for s0 and s100 prior length (TMB indexing starts with 0)
-s0_index <- c(0, 3, 7)
-s100_index <- c(20, 24, 27)
+s0_index <- prior_0 %>% 
+  mutate(length_bin = as.numeric(as.character(length_bin))) %>% 
+  left_join(tmb_index) %>% 
+  pull(index)
+# s100_index <- c(20, 24, 27) # not sure where these numbers came from
+s100_index <- prior_100 %>% 
+  mutate(length_bin = as.numeric(as.character(length_bin))) %>% 
+  left_join(tmb_index) %>% 
+  pull(index)
 
 # Get starting values from theoretical selectivity curves
 s50_vec <- vector(length = 3)
 slp_vec <- vector(length = 3)
 
 for(i in 1:length(unique(df$Treatment))) {
-  tmp <- sprior %>% filter(Treatment == unique(df$Treatment)[i])
+  tmp <- sprior %>% filter(Treatment %in% unique(df$Treatment)[i])
   fit <- glm(p ~ length, data = tmp, family = "quasibinomial")
   s50_vec[i] <- - coef(fit)[1] / coef(fit)[2]
   slp_vec[i] <- coef(fit)[2] / 4 
@@ -171,7 +193,7 @@ ring_sizes <- 2.54 * c(3.5, 3.75, 4)
 ntrt_df <- counts %>% 
   group_by(Treatment, set) %>% 
   dplyr::summarise(ntrt = length(which(disposition == "tagged"))) %>% 
-  dcast(set ~ Treatment)
+  data.table::dcast(set ~ Treatment)
 
 # TMB data structure
 data <- list(nset = length(unique(df$effort_no)), # number of sets
@@ -215,13 +237,10 @@ dyn.load(dynlib("escape"))
 # Model 1: Assume fixed delta
 # map <- list(dummy = factor(NA),
 #             log_delta = factor(NA))
-# 
 # obj <- MakeADFun(data, parameters, map = map, 
 #                    DLL = "escape", silent = TRUE,
 #                    hessian = TRUE, random = "nu") 
-# 
 # opt <- nlminb(obj$par, obj$fn, obj$gr)
-# 
 # Mod1_AIC <- TMBAIC(opt)
 
 # Model 2: Estimate delta
@@ -249,7 +268,7 @@ obj$report()$set_effect
 phi <- as.data.frame(obj$report()$fit_phi)
 names(phi) <- paste0(unique(df$Treatment))
 phi <- phi %>% mutate(length_bin = len)
-phi <- melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi") 
+phi <- data.table::melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi") 
 
 com %>% 
   left_join(phi, by = c("Treatment", "length_bin")) %>% 
@@ -287,11 +306,16 @@ ggplot() +
 cores <- parallel::detectCores()-1
 options(mc.cores = cores)
 init.fn <- function(){
-  list(s50 = sort(runif(3, 55, 70)), slp = sort(runif(3, 0.1, 0.2), decreasing = TRUE),
+  list(s50 = sort(runif(3, 55, 70)), 
+       slp = sort(runif(3, 0.1, 0.2), decreasing = TRUE),
        log_delta = log(rnorm(1, 1, 0.1)),
        nu = rnorm(length(unique(df$effort_no))))}
 
-fit <- tmbstan(obj, seed = 1, chains = cores, open_progress = FALSE, init = init.fn, lower = lb, upper = ub)
+library(tmbstan)
+fit <- tmbstan(obj, seed = 1, chains = 3, iter = 10000, 
+               warmup = 2000, thin = 10,
+               open_progress = FALSE, 
+               init = init.fn, lower = lb, upper = ub)
 
 pdf(file = "../figures/pairs.pdf", width = 7.08, height = 7.08/1.618)#, width = 180, height = 180)# , dpi = 600, units = "mm")
 pairs(fit, pars = names(obj$par)) # Pairs plot of the fixed effects

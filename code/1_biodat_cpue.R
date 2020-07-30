@@ -530,8 +530,8 @@ all_counts <- counts %>%
 
 # Bootstrap ----
 
-# Bootstrap mean and median CPUE by treatment, get 95% CI using percentile
-# method in the boot package
+# Bootstrap mean and median CPUE by treatment, get 95% bias-corrected
+# accelerated condifence intervals using the boot package
 calc_mean <- function(d, i) {
   mean(d[i])
 }
@@ -552,25 +552,27 @@ lapply(nest_counts, head)
 nest_counts <- nest_counts  %>%  
   mutate(booted_mean = map(.x = data, # The list-column containing <S3: tibble>
                            ~ boot(data = .x$n_sablefish, # The <S3 tibble> column being sampled
-                                        statistic = calc_mean, # The user-defined function
-                                        R = nrow(.x) + 1, # The number of replicates
-                                        stype = "i")), 
+                                  statistic = calc_mean, # The user-defined function
+                                  # R = nrow(.x) + 1, # The number of replicates
+                                  R = 5000, # The number of replicates
+                                  stype = "i")), 
          booted_median = map(.x = data, 
                              ~ boot(data = .x$n_sablefish, 
-                                          statistic = calc_median, 
-                                          R = nrow(.x) + 1,
-                                          stype = "i")))
+                                    statistic = calc_median, 
+                                    # R = nrow(.x) + 1,
+                                    R = 5000, # The number of replicates
+                                    stype = "i")))
 
 # Calculate confidence interval - bootstrap percentile method
 nest_counts <- nest_counts %>% 
   dplyr::mutate(mean_ci = map(.x = booted_mean, # The list-column containing <S3: boot> objects
                                        ~ boot::boot.ci(.x,
                                                        conf = 0.95, # Interval width
-                                                       type = "perc")),  # Calculate a BCa interval
+                                                       type = "bca")),  # Calculate a BCa interval
                 median_ci = map(.x = booted_median,
                                      ~ boot::boot.ci(.x,
                                                      conf = 0.95,
-                                                     type = "perc")))
+                                                     type = "bca")))
 
 
 str(nest_counts$mean_ci[[1]])
@@ -588,15 +590,15 @@ counts_ci <- nest_counts %>%
                 median = map(.x = median_ci, # The list-column containing <S3 bootci> objects
                                        ~ .x$t0), # The point estimate
                 lci_median = map(.x = median_ci,
-                                      ~ .x$percent[[4]]), # The value of the lower 2.5% limit
+                                      ~ .x$bca[[4]]), # The value of the lower 2.5% limit
                 uci_median = map(.x = median_ci,
-                                      ~ .x$percent[[5]]),  # The value of teh upper 97.5% limit
+                                      ~ .x$bca[[5]]),  # The value of teh upper 97.5% limit
                 mean = map(.x = mean_ci, 
                              ~ .x$t0), 
                 lci_mean = map(.x = mean_ci,
-                                 ~ .x$percent[[4]]), 
+                                 ~ .x$bca[[4]]), 
                 uci_mean = map(.x = mean_ci,
-                                 ~ .x$percent[[5]])) %>% 
+                                 ~ .x$bca[[5]])) %>% 
   # Drop the list-columns (no longer needed)
   dplyr::select(-data, -booted_median, -booted_mean, -median_ci, -mean_ci) %>%
   # Unnest the dataframe
@@ -620,7 +622,7 @@ cpue_res <- counts_ci %>%
   arrange(Size_category, Treatment) %>% 
   select(Treatment, n_pots, latex_mean, latex_median)
   
-xtable(cpue_res)
+write.table(xtable(cpue_res), "output/latex_cpue.txt")
 write_csv(counts_ci, "output/cpue_summary.csv")
 
 ggplot(all_counts, aes(x = fct_rev(Treatment), y = n_sablefish)) +
