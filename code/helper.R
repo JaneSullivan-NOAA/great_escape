@@ -1,33 +1,25 @@
 # Libraries, ggplot themes, and user-defined fxns.
-# Author: Jane Sullivan
-# Contact: jane.sullivan1@alaska.gov
-# Last edited: 2019-10-01
+# Contact: jane.sullivan@noaa.gov
+# Last edited: July 2020
 
 options(scipen = 999) # turn off scientific notation
 
 # Libraries ----
 
 if(!require("mosaic"))   install.packages("mosaic") # derivedFactor, derivedVariable. Masks over a lot of fxns, but generally only improves their utility
-# if(!require("tidyverse"))   install.packages("tidyverse") # dplyr, ggplot, etc.
-if(!require("dplyr"))   install.packages("dplyr") # dplyr, ggplot, etc.
-if(!require("ggplot2"))   install.packages("ggplot2") # dplyr, ggplot, etc.
-if(!require("readr"))   install.packages("readr") # read_csv
-# if(!require("tidyr"))   install.packages("tidyr") 
+if(!require("tidyverse"))   install.packages("tidyverse") # dplyr, ggplot, etc.
 if(!require("lubridate"))   install.packages("lubridate") # dates functions like yday, dmy/mdy
-# if(!require("mgcv"))   install.packages("mgcv") # gams
-# if(!require("gridExtra"))   install.packages("gridExtra") # multipanneled plots
 if(!require("data.table"))   install.packages("data.table") # dcast, foverlaps
 if(!require("ROracle"))   install.packages("ROracle") # database access through R
-# if(!require("broom"))   install.packages("broom") # tidying regression model output
-# if(!require("padr"))   install.packages("padr") # fills in missing values in a time series
-# if(!require("tidyr"))   install.packages("tidyr") # reshaping data
 if(!require("knitr"))   install.packages("knitr") # r markdown
-# if(!require("forcats"))   install.packages("forcats") # releveling factors
 if(!require("cowplot"))   install.packages("cowplot") # plot_grid and so much else
-# if(!require("ggridges"))   install.packages("ggridges") # length comps
 if(!require("captioner"))   install.packages("captioner") #numbering, ordering, & creating captions for tables and figures
 if(!require("ggpubr"))   install.packages("ggpubr") # QQ plots
 if(!require("ciTools"))   install.packages("ciTools") # GLM prediction intervals
+if(!require("FSA"))   install.packages("FSA") # Dunn tests
+if(!require("broom"))   install.packages("broom") # tidy GLM results
+if(!require("boot"))   install.packages("boot") # bootstrapping
+if(!require("xtable"))   install.packages("xtable") # generate latex tables
 
 # Figure theme ----
 

@@ -1,7 +1,7 @@
-# Exploratory data analysis
-# Author: Jane Sullivan
-# Contact: jane.sullivan1@alaska.gov
-# Last edited: 2019-10-01
+# Escape ring study:Data summaries, theoretical selectivity curves, and capture
+# efficiency analysis
+# Contact: jane.sullivan@noaa.gov
+# Last edited: July 2020
 
 # Set up ----
 
@@ -10,8 +10,6 @@ set.seed(907)
 YEAR <- 2019 # study year(s)
 
 source("code/helper.r")
-library(FSA) # for Dunn test
-library(broom) # tidy
 
 # Bio data
 bio <- read_csv(paste0("data/bio_cleaned_", YEAR, ".csv")) %>% 
@@ -65,6 +63,16 @@ ggsave(plot = p, filename = paste0("figures/size_freq_", YEAR, ".pdf"), dpi=600,
 # Identify outliers, plot them, remove them
 grth <- bio %>% filter(!is.na(girth))
 # identify(length, girth, plot=TRUE)
+
+# girth sample sizes
+grth %>% 
+  count(Treatment) %>% 
+  mutate(Treatment = as.character(Treatment)) %>% 
+  bind_rows(data.frame(Treatment = "Total",
+                       n = grth %>% 
+                         count() %>% 
+                         pull(n))) %>% 
+  write_csv("output/grth_sample_sizes.csv")
 
 grth <- grth %>% 
   mutate(Outlier = ifelse(row_number() %in% c(190, 532, 533), "Outlier", "Normal"))
@@ -229,8 +237,8 @@ pred_df <- data.frame(length = seq(30, 100, 0.01),
                                                                    
 pred_df$pred <- predict(fit_int, pred_df)
 
-# A. Baldwin measured the mesh size diameter for me. Assume 70 mm. See issue 2
-# on github for documentation.
+# A. Baldwin measured the mesh size diameter for me at roughly 70 mm. See issue
+# 2 on github for documentation.
 ring <- data.frame(ring_in = c(70 / 25.4, 3.5, 3.75, 4)) %>% 
   mutate(ring_mm = ring_in * 25.4) 
 
@@ -256,12 +264,10 @@ for(i in 1:length(pred_df$pred)) {
 sel <- as.data.frame(sel)
 names(sel) <- levels(bio$Treatment)
 sel <- sel %>% mutate(length = pred_df$length)
-sel <- data.table::melt(data = sel, id.vars = "length", variable.name = "Treatment", value.name = "p")
+sel <- reshape2::melt(data = sel, id.vars = "length", variable.name = "Treatment", value.name = "p")
 
 # Save output, used to inform prior
 write_csv(sel, paste0("output/theoretical_selectivity_", YEAR, ".csv"))
-
-# sel <- sel %>% filter(length %in% seq(30, 100, 0.1))
 
 p <- ggplot(sel %>% filter(length %in% seq(30, 100, 0.5)), aes(x = length, y = p, col = Treatment, 
                      linetype = Treatment, group = Treatment)) +
@@ -457,7 +463,7 @@ ggsave(plot = p, filename = paste0("figures/theoretical_selectivity_soaktime_", 
 # nonparameteric one-way ANOVA
 shapiro.test(counts$n_sablefish) # H0: Data are normal
 kw <- tidy(kruskal.test(n_sablefish ~ Treatment, data = counts)) %>% 
-  mutate(data = "All sizes combined") # H0: means of the groups are the same
+  mutate(data = "All sizes combined") # H0: distributions of the groups are the same
 kw
 tst_counts <- counts %>% mutate(Treatment = factor(Treatment, ordered = FALSE))
 # Use Dunn test for adhoc multiple comparisons with a Bonferroni adjusted
@@ -465,17 +471,10 @@ tst_counts <- counts %>% mutate(Treatment = factor(Treatment, ordered = FALSE))
 dunn <- dunnTest(n_sablefish ~ Treatment, data = tst_counts, method = "bonferroni")
 dunn_df <- as.data.frame(dunn[[2]]) %>% mutate(data = "All sizes combined")
 
-counts %>% 
-  group_by(Treatment) %>% 
-  summarize(mean_cpue = mean(n_sablefish),
-            median_cpue = median(n_sablefish),
-            cpue_sd = sd(n_sablefish)) %>% 
-  kable()
-
 # Split up CPUE data by length. We have a smaller sample size than the combined
 # Two categories: 1) < 63 cm (L50, Dressel 2009) and 2) >= 63 cm
 
-# Total sample sizes
+# Length data sample sizes
 counts %>% 
   group_by(Treatment) %>% 
   dplyr::summarise(n = sum(n_sablefish)) %>% 
@@ -496,44 +495,152 @@ counts %>%
                                     mean_length = mean(length),
                                     se_length = sd(length)/sqrt(n_lengths)) %>% 
                           rename(Treatment = Total))) %>% 
-  write_csv("output/sample_sizes.csv")
+  write_csv("output/length_sample_sizes.csv")
 
-size_cpue <- bio %>% 
+# Pull out pots that were not sampled for lengths (when holding tanks are full
+# and samplers are backed up, pots are tallied for catch but not sampled)
+not_sampled <- counts %>% 
+  mutate(pot_id = paste(set, pot, sep = "_")) %>% 
+  filter(disposition == "not_tagged") %>%
+  pull(pot_id)
+length(not_sampled)
+
+bio <- bio %>% 
   # Remove "stuck" fish b/c they cannot be attributed to a specific pot
   filter(pot_no != 99) %>% 
   mutate(Size_category = ifelse(length < 63, 
-                                "Sablefish < 63 cm", "Sablefish \u2265 63 cm")) %>%
-  group_by(Treatment, effort_no, pot_no, Size_category) %>% 
-  summarize(n_sablefish = n()) 
+                                "Sablefish < 63 cm", "Sablefish \u2265 63 cm"),
+         pot_id = paste(effort_no, pot_no, sep = "_")) 
 
-# Figure with all sizes combined, and split by L50
+size_cpue <- bio %>%
+  group_by(pot_id, Size_category) %>% 
+  tally %>% 
+  ungroup() %>% 
+  # Account for 0 counts, especially an issue for large fish
+  complete(pot_id, Size_category, fill = list(n = 0)) %>% 
+  left_join(bio %>% distinct(pot_id, Treatment), by = "pot_id") %>% 
+  rename(n_sablefish = n)
 
-mu <- counts %>% 
-  filter(Treatment == "Control") %>% 
-  summarize(mu = median(n_sablefish)) %>% 
+# Combine count data from all pots to count data split by L50
+all_counts <- counts %>% 
+  mutate(pot_id = paste(set, pot, sep = "_")) %>% 
+  select(Treatment, pot_id, n_sablefish) %>% 
   mutate(Size_category = "All sizes combined") %>% 
-  bind_rows(size_cpue %>% 
-              filter(Treatment == "Control") %>% 
-              group_by(Size_category) %>% 
-              summarize(mu = median(n_sablefish)))
+  bind_rows(size_cpue) 
 
-counts %>% 
-  select(Treatment, effort_no = set, pot_no = pot, n_sablefish) %>% 
-  mutate(Size_category = "All sizes combined") %>% 
-  bind_rows(size_cpue) -> tmp
+# Bootstrap ----
 
-p <- ggplot(tmp, aes(x = Treatment, y = n_sablefish)) +
-  # If the notches don't overlap this suggests the means are different
-  geom_boxplot(notch = TRUE) +
-  geom_hline(data = mu, aes(yintercept = mu), col = "grey", lty = 2) +
-  facet_wrap(~ Size_category, ncol = 1, scales = "free_y") + 
-  labs(x = NULL, y = "CPUE")
-p
+# Bootstrap mean and median CPUE by treatment, get 95% CI using percentile
+# method in the boot package
+calc_mean <- function(d, i) {
+  mean(d[i])
+}
 
-ggsave(filename = paste0("figures/cpue_", YEAR, ".pdf"),
+calc_median <- function(d, i) {
+  median(d[i])
+}
+
+# Convert to list so you can bootstrap across multiple groups simultaneously
+# using purrr package
+nest_counts <- all_counts %>% 
+  mutate(combos = paste(Treatment, Size_category)) %>% 
+  tidyr::nest(data = c(-combos))
+
+lapply(nest_counts, head)
+
+# Bootstrap mean and median CPUE
+nest_counts <- nest_counts  %>%  
+  mutate(booted_mean = map(.x = data, # The list-column containing <S3: tibble>
+                           ~ boot(data = .x$n_sablefish, # The <S3 tibble> column being sampled
+                                        statistic = calc_mean, # The user-defined function
+                                        R = nrow(.x) + 1, # The number of replicates
+                                        stype = "i")), 
+         booted_median = map(.x = data, 
+                             ~ boot(data = .x$n_sablefish, 
+                                          statistic = calc_median, 
+                                          R = nrow(.x) + 1,
+                                          stype = "i")))
+
+# Calculate confidence interval - bootstrap percentile method
+nest_counts <- nest_counts %>% 
+  dplyr::mutate(mean_ci = map(.x = booted_mean, # The list-column containing <S3: boot> objects
+                                       ~ boot::boot.ci(.x,
+                                                       conf = 0.95, # Interval width
+                                                       type = "perc")),  # Calculate a BCa interval
+                median_ci = map(.x = booted_median,
+                                     ~ boot::boot.ci(.x,
+                                                     conf = 0.95,
+                                                     type = "perc")))
+
+
+str(nest_counts$mean_ci[[1]])
+str(nest_counts$median_ci[[1]])
+str(nest_counts$data[[1]])
+
+# Add a three column called "statistic" (point estimate), "lower_ci" (2.5% CI),
+# and "upper_ci" (97.5% CI)
+counts_ci <- nest_counts %>% 
+  # Add columns
+  dplyr::mutate(Treatment = map(.x = data,
+                                ~ unique(.x$Treatment)),
+                Size_category = map(.x = data,
+                                    ~ unique(.x$Size_category)),
+                median = map(.x = median_ci, # The list-column containing <S3 bootci> objects
+                                       ~ .x$t0), # The point estimate
+                lci_median = map(.x = median_ci,
+                                      ~ .x$percent[[4]]), # The value of the lower 2.5% limit
+                uci_median = map(.x = median_ci,
+                                      ~ .x$percent[[5]]),  # The value of teh upper 97.5% limit
+                mean = map(.x = mean_ci, 
+                             ~ .x$t0), 
+                lci_mean = map(.x = mean_ci,
+                                 ~ .x$percent[[4]]), 
+                uci_mean = map(.x = mean_ci,
+                                 ~ .x$percent[[5]])) %>% 
+  # Drop the list-columns (no longer needed)
+  dplyr::select(-data, -booted_median, -booted_mean, -median_ci, -mean_ci) %>%
+  # Unnest the dataframe
+  tidyr::unnest(cols = c(Treatment, Size_category, lci_mean, mean, uci_mean, 
+                         lci_median, median, uci_median)) %>% 
+  select(-combos)
+
+# Create formatted latex table for paper
+cpue_res <- counts_ci %>% 
+  left_join(all_counts %>% 
+              mutate(combo = paste(Treatment, Size_category, sep = "_")) %>% 
+              group_by(combo) %>% 
+              mutate(n_pots = n_distinct(pot_id)) %>% 
+              ungroup() %>% 
+              distinct(Size_category, Treatment, n_pots)) %>% 
+  # Format for latex table
+  mutate_at(.funs = list(~formatC(., digits = 1, format = "f")), .vars = 3:8) %>% 
+  # List CI in parentheses in table
+  mutate(latex_mean = paste0(mean, " (", lci_mean, ", ", uci_mean, ")"),
+         latex_median = paste0(median, " (", lci_median, ", ", uci_median, ")")) %>% 
+  arrange(Size_category, Treatment) %>% 
+  select(Treatment, n_pots, latex_mean, latex_median)
+  
+xtable(cpue_res)
+write_csv(counts_ci, "output/cpue_summary.csv")
+
+ggplot(all_counts, aes(x = fct_rev(Treatment), y = n_sablefish)) +
+  geom_violin(adjust = 1, fill = "lightgrey", colour = "white") +
+  geom_boxplot(width = 0.1, fill = NA, size = 0.1, 
+               outlier.shape = 46, outlier.size = 0.001) +
+  # geom_boxplot(notch = TRUE) +
+  # geom_hline(data = mu, aes(yintercept = mu), col = "grey", lty = 2) +
+  geom_point(data = counts_ci, aes(x = fct_rev(Treatment), y = mean), 
+             shape = '*', size = 2) +
+  # geom_segment(data = counts_ci, aes(x = Treatment, xend = Treatment,
+  #                                    y = lower_ci, yend = upper_ci)) +
+  facet_wrap(~ Size_category, ncol = 1, scales = "free_x") + 
+  labs(x = NULL, y = "CPUE") +
+  coord_flip()
+
+ggsave(filename = paste0("figures/cpueviolin_", YEAR, ".pdf"),
        dpi=600, height=3*(80/1.618), width=80, units="mm", device = cairo_pdf)
 
-# All significant
+# Kruskal-wallis and post hoc Dunn tests by L50
 tst <- size_cpue %>% 
   ungroup() %>% 
   filter(Size_category == "Sablefish < 63 cm") %>% 
@@ -564,11 +671,19 @@ dunn_df <- dunn_df %>%
   bind_rows(as.data.frame(dunn[[2]]) %>% 
               mutate(data = "Sablefish >= 63 cm"))
 
-size_cpue %>% ungroup() %>% 
-  filter(Size_category == "Sablefish \u2265 63 cm") %>% 
-  group_by(Treatment) %>% 
-  summarize(median = median(n_sablefish),
-            mean = mean(n_sablefish))
+# check to make sure means and medians from bootstrap are same as empirical
+# (they are)
+all_counts %>% 
+  group_by(Size_category, Treatment) %>% 
+  summarize(mean = mean(n_sablefish),
+            median = median(n_sablefish))
+
+# Save results of KW and Dunn tests (only save p-value that's associated with
+# BOnferroni adjustment)
+dunn_df %>% 
+  select(data, Comparison, P.adj) %>% 
+  arrange(data, Comparison) %>% 
+  write_csv("output/dunn_tests.csv")
 
 write_csv(kw, "output/kw_tests.csv")
-write_csv(dunn_df, "output/dunn_tests.csv")
+
