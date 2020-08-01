@@ -171,8 +171,8 @@ Type objective_function<Type>::operator() ()
       }
       
       if (prior_type == 1) { // Beta
-        prior_s0 += dbeta(s0, s0_alpha, s0_beta, false);
-        prior_s100 += dbeta(s100, s100_alpha,s100_beta, false);
+        prior_s0 -= dbeta(s0, s0_alpha, s0_beta, true);
+        prior_s100 -= dbeta(s100, s100_alpha,s100_beta, true);
       }
     }
   }

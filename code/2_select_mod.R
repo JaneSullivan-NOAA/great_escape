@@ -5,11 +5,9 @@
 
 source("code/helper.r")
 library(TMB)
-library(cowplot)
 # library(nimble) # inverse gamma prior
-library(broom) # tidy() clean up parameter estimates
-library(tmbstan) # run mcmc
-library(shinystan) # awesome diagnostic tool
+# library(tmbstan) # run mcmc
+# library(shinystan) # awesome diagnostic tool
 set.seed(907)
 
 # Data ----
@@ -106,8 +104,10 @@ ggplot(com, aes(x = length_bin, y = combined_p,
   ylim(c(0,1)) +
   geom_smooth()
 
-# Priors ---- Priors on 0 and 100% retention. Include bin definitions to make
-# indexing a little easier
+# Priors ---- 
+
+# Priors on 0 and 100% retention. Include bin definitions to make indexing a
+# little easier
 prior_100 <- filter(sprior, p == 1 & Treatment != "Control") %>% 
   group_by(Treatment) %>% 
   filter(length == min(length)) %>% 
@@ -117,7 +117,7 @@ prior_100 <- filter(sprior, p == 1 & Treatment != "Control") %>%
                           labels = paste(seq(51, 79, 1)))) %>% 
   select(-length2)
 
-prior_0 <- filter(sprior, p < 0.01 & Treatment != "Control") %>%
+prior_0 <- filter(sprior, p < 0.01 & Treatment != "Control") %>% 
   group_by(Treatment) %>% 
   filter(length == max(length)) %>% 
   select(Treatment, length) %>% 
@@ -129,9 +129,6 @@ prior_0 <- filter(sprior, p < 0.01 & Treatment != "Control") %>%
 
 tmb_index <- data.frame(length_bin = sort(unique(df$length_bin)),
                         index = 0:(length(sort(unique(df$length_bin)))-1))
-
-
-
 
 len <- sort(unique(df$length_bin))
 fit_len <- seq(10, 100, 1)
@@ -167,16 +164,16 @@ prior <- function(a, b, label){
                     'label'= rep(label, length(x))))
 }
 
-s0_alpha <- 0.7
-s0_beta <- 20
-s100_alpha <- 40.0
-s100_beta <- 0.1
+s0_alpha <- 1 # (0,1] to keep prior on border with 0; smaller values = tighter prior
+s0_beta <- 2.75 # [1,inf); larger values = tighter prior
+s100_alpha <- 10 # [1,inf]; larger values = tighter prior
+s100_beta <- 1 # (0,1]; smaller values = tighter prior
 
 bind_rows(prior(a = s0_alpha, b = s0_beta, label = "s0"),
           prior(a = s100_alpha, b = s100_beta, label = "s100")) %>% 
   ggplot(aes(x, y, col = factor(label), linetype = factor(label))) +
   geom_line() +
-  scale_colour_grey() +
+  # scale_colour_grey() +
   ylim(0,10) +
   labs(x = expression(theta), y = expression(paste('p(',theta,')', sep = '')),
        col = expression(theta), lty = expression(theta)) +
@@ -226,7 +223,7 @@ parameters <- list(dummy = 0,
                    log_delta = log(1),
                    nu = rep(0, length(unique(df$effort_no))))
 
-# Bounds aka uniform priors
+# Bounds aka uniform priors in same order as parameter list
 lb <- c(rep(0, 3), rep(0, 3), log(0.1), rep(-5, length(unique(df$effort_no))))
 ub <- c(rep(100, 3), rep(0.9, 3), log(2), rep(5, length(unique(df$effort_no))))
 
@@ -234,73 +231,87 @@ ub <- c(rep(100, 3), rep(0.9, 3), log(2), rep(5, length(unique(df$effort_no))))
 compile("escape.cpp")
 dyn.load(dynlib("escape"))
 
-# Model 1: Assume fixed delta
-# map <- list(dummy = factor(NA),
-#             log_delta = factor(NA))
-# obj <- MakeADFun(data, parameters, map = map, 
-#                    DLL = "escape", silent = TRUE,
-#                    hessian = TRUE, random = "nu") 
-# opt <- nlminb(obj$par, obj$fn, obj$gr)
-# Mod1_AIC <- TMBAIC(opt)
+# Model 1a ----
 
-# Model 2: Estimate delta
+# Assume fixed delta with normal prior on s0 and s100
+map <- list(dummy = factor(NA),
+            log_delta = factor(NA))
+data$prior_type <- 0 # normal
+obj <- MakeADFun(data, parameters, map = map,
+                   DLL = "escape", silent = TRUE,
+                   hessian = TRUE, random = "nu")
+opt <- nlminb(obj$par, obj$fn, obj$gr)
+
+(Mod1a_AIC <- TMBAIC(opt))
+best <- obj$env$last.par.best
+(rep <- sdreport(obj))
+
+plot_mle(delta = "fixed", selprior = "normal")
+
+# Model 1b ----
+
+# Estimate delta with normal prior on s0 and s0
 map <- list(dummy = factor(NA))
-
+data$prior_type <- 0 # normal
 obj <- MakeADFun(data, parameters, map = map, 
                  DLL = "escape", silent = TRUE,
                  hessian = TRUE, random = "nu") 
-
 opt <- nlminb(obj$par, obj$fn, obj$gr, lower = lb, upper = ub)
 
-# Mod2_AIC <- TMBAIC(opt)
-# 
-# Mod1_AIC - Mod2_AIC
-
+(Mod1b_AIC <- TMBAIC(opt))
 best <- obj$env$last.par.best
-print(best)
-rep <- sdreport(obj)
-print(rep)
+(rep <- sdreport(obj))
 
-obj$report()$prior_s0
-obj$report()$prior_s100
-obj$report()$set_effect
+plot_mle(delta = "estimated", selprior = "normal")
 
-phi <- as.data.frame(obj$report()$fit_phi)
-names(phi) <- paste0(unique(df$Treatment))
-phi <- phi %>% mutate(length_bin = len)
-phi <- data.table::melt(data = phi, id.vars = "length_bin", variable.name = "Treatment", value.name = "phi") 
+# Model 2a ----
 
-com %>% 
-  left_join(phi, by = c("Treatment", "length_bin")) %>% 
-  mutate(resid = combined_p - phi,
-         Treatment = factor(Treatment, levels = c("8.9 cm", "9.5 cm", "10.2 cm"), 
-                            ordered = TRUE)) -> tmp
+# Assume fixed delta with beta prior on s0 and s100
+map <- list(dummy = factor(NA),
+            log_delta = factor(NA))
+data$prior_type <- 1 # beta
+obj <- MakeADFun(data, parameters, map = map,
+                 DLL = "escape", silent = TRUE,
+                 hessian = TRUE, random = "nu")
+opt <- nlminb(obj$par, obj$fn, obj$gr)
 
-ggplot(tmp) +
-  geom_point(aes(x = length_bin, y = combined_p,
-                 group =  Treatment, col = Treatment)) +
-  # geom_hline(yintercept = 0.5) +
-  geom_line(aes(x = length_bin, y = phi, group = Treatment, col = Treatment)) #+
+(Mod2a_AIC <- TMBAIC(opt))
+best <- obj$env$last.par.best
+(rep <- sdreport(obj))
+Mod2a_nll <- obj$fn()[1]
+plot_mle(delta = "fixed", selprior = "beta")
 
-ggplot(tmp, aes(x = length_bin, y = resid)) +
-  geom_hline(yintercept = 0, col = "grey") +
-  geom_segment(aes(x = length_bin, xend = length_bin, y = 0, yend = resid),
-               size = 0.2, col = "grey") +
-  geom_point() +
-  facet_wrap(~Treatment)
+# Model 2b ----
 
-slx <- as.data.frame(obj$report()$full_slx)
-names(slx) <- paste0(unique(df$Treatment))
-slx <- slx %>% mutate(length_bin = fit_len)# sort(unique(df$length_bin)))
-slx <- melt(data = slx, id.vars = "length_bin", variable.name = "Treatment", value.name = "slx")
+# Estimate delta with beta prior on s0 and s0
+map <- list(dummy = factor(NA))
+data$prior_type <- 1 # beta
+obj <- MakeADFun(data, parameters, map = map, 
+                 DLL = "escape", silent = TRUE,
+                 hessian = TRUE, random = "nu") 
+opt <- nlminb(obj$par, obj$fn, obj$gr, lower = lb, upper = ub)
 
-ggplot() +
-  ylim(c(0,1)) +
-  geom_line(data = slx, aes(x = length_bin, y = slx, group = Treatment, col = Treatment))
+(Mod2b_AIC <- TMBAIC(opt))
+best <- obj$env$last.par.best
+(rep <- sdreport(obj))
+Mod2b_nll <- obj$fn()[1]
+
+plot_mle(delta = "estimated", selprior = "beta")
+
+# AIC model selection ----
+AICtable <- data.frame(Model = c("Mod1a_fixdelta_normal",
+                                 "Mod1b_estdetla_normal",
+                                 "Mod2a_fixdelta_beta",
+                                 "Mod2b_estdetla_beta"),
+                       AIC = c(Mod1a_AIC, Mod1b_AIC, Mod2a_AIC, Mod2b_AIC))
+AICtable
+# Mod 2a and 2b are the same by AIC, use one that has lowest nll
+Mod2a_nll; Mod2b_nll
+
 
 # MCMC ----
 
-# fit <- tmbstan(obj, chains = 1)
+library(tmbstan)
 
 # Run in parallel with a init function
 cores <- parallel::detectCores()-1
@@ -311,7 +322,6 @@ init.fn <- function(){
        log_delta = log(rnorm(1, 1, 0.1)),
        nu = rnorm(length(unique(df$effort_no))))}
 
-library(tmbstan)
 fit <- tmbstan(obj, seed = 1, chains = 3, iter = 10000, 
                warmup = 2000, thin = 10,
                open_progress = FALSE, 
