@@ -121,10 +121,22 @@ summary(fit_complex)
 R2_simple <- 1 - (fit_simple$deviance / fit_simple$null.deviance)
 R2_complex <- 1 - (fit_complex$deviance / fit_complex$null.deviance)
 
+# Are the different fits by Treatment biologically different? Do any patterns
+# related to escape ring emerge?
+pred <- expand.grid(length = seq(1, 100, 5),
+                    Treatment = unique(bio$Treatment)) 
+pred <- pred %>% 
+  mutate(fitted = exp(predict(fit_complex,
+                              newdata = pred, type = "response")) * exp(0.5 * sigma(fit_complex)^2))
+p <- ggplot() +
+  geom_point(data = grth, aes(x = length, y = girth, col = Treatment, fill = Treatment), shape = 20) +
+  geom_line(data = pred, aes(x = length, y = fitted,  col = Treatment, group = Treatment)) +
+  labs(x = "Fork length (cm)", y = "Girth (mm)") 
+p
+
 # Get fitted values for girth and prediction intervals (need to exponentiate for figure)
 pred <- bio %>% select(Treatment, length)
 pred <- ciTools::add_pi(pred, fit_complex, alpha = 0.05, names = c("pi_lwr", "pi_upp"))
-
 # Apply bias correction
 pred <- pred %>% 
   mutate(fitted = exp(pred) * exp(0.5 * sigma(fit_complex)^2),
@@ -132,21 +144,27 @@ pred <- pred %>%
          upper = exp(pi_upp) * exp(0.5 * sigma(fit_complex)^2))
 
 p <- ggplot() +
-  geom_point(data = grth, aes(x = length, y = girth), shape = 20) +
-  geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper), 
-              alpha = 0.6, fill = "grey70") +
-  geom_line(data = pred, aes(x = length, y = fitted, group = Treatment)) +
-  facet_wrap(~ Treatment) +
+  geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper,
+                               fill = Treatment),
+              alpha = 0.6) + #, fill = "grey70"
+  geom_point(data = grth, aes(x = length, y = girth, col = Treatment), shape = 20) +
+  geom_line(data = pred, aes(x = length, y = fitted, col = Treatment, group = Treatment)) +
   labs(x = "Fork length (cm)", y = "Girth (mm)") 
 p
 ggsave(plot = p, filename = paste0("figures/fitted_girth_bytreatment_", YEAR, ".pdf"), 
        dpi=600, height=180/1.618, width=180, units="mm")
 
+# The fits of girth-length may be slightly improved statistically by including
+# Treatment, but the realized fits are not biologically different and appear to
+# be influenced by sparse high leverage points at the larger lengths. For
+# purposes of creating theoretical selectivity curves, include all girth data by
+# all Treatments.
+
 # Girth adjustments  ----
 
 # Combine girths from survey and fishery
 comb_grth <- grth %>% 
-  filter(Treatment == "Control") %>%
+  # filter(Treatment == "Control") %>%
   select(length, girth) %>% 
   mutate(Source = "Survey (May/Jun)") %>% 
   bind_rows(fsh_grth %>% 
@@ -174,6 +192,7 @@ AIC_simple - AIC_int
 AIC_int - AIC_intslp
 
 summary(fit_int)
+
 R2_int <- 1 - (fit_int$deviance / fit_int$null.deviance) # coefficient of variation
 sigma(fit_int) # residual standard deviation
 
@@ -190,6 +209,7 @@ pred <- pred %>%
 pred <- pred %>% mutate(Source = factor(Source, levels = c("Survey (May/Jun)", "Fishery (Sep/Oct)"), ordered = TRUE))
 comb_grth <- comb_grth %>% mutate(Source = factor(Source, levels = c("Survey (May/Jun)", "Fishery (Sep/Oct)"), ordered = TRUE))
 
+
 p1 <- ggplot() +
   geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper, fill = Source), 
               alpha = 0.3) +
@@ -200,13 +220,13 @@ p1 <- ggplot() +
   labs(x = "Fork length (cm)", y = "Girth (mm)") +
   theme(legend.position = c(0.75, 0.2)) +
   annotate('text', x = 45, y = 650,
-           label = as.character(expression(paste(R^{2}==0.9, ",  ", sigma==0.05))),
+           label = as.character(expression(paste(R^{2}==0.91, ",  ", sigma==0.06))),
            parse = TRUE, size = 2.5, hjust = 0) +
   annotate('text', x = 45, y = 620,
-           label = as.character(expression(paste("May/Jun:  ", italic(hat(G))==4.47*italic(L)^{1.03}))),
+           label = as.character(expression(paste("May/Jun:  ", italic(hat(G))==4.54*italic(L)^{0.99}))),
            parse = TRUE, size = 2.5, hjust = 0) +
   annotate('text', x = 45, y = 590,
-           label = as.character(expression(paste("Sep/Oct:  ", italic(hat(G))==4.47*italic(L)^{1.07}))),
+           label = as.character(expression(paste("Sep/Oct:  ", italic(hat(G))==4.54*italic(L)^{1.03}))),
            parse = TRUE, col = "grey50", size = 2.5, hjust = 0)
   
 p1
@@ -227,7 +247,7 @@ ggsave(plot = p1, filename = paste0("figures/girth_bysource_", YEAR, ".pdf"),
 # https://stackoverflow.com/questions/31794876/ggplot2-how-to-curve-small-gaussian-densities-on-a-regression-line
 
 # For theoretical selectivity curves, use model output from Control data only.
-grth <- grth %>% filter(Treatment == "Control")
+# grth <- grth %>% filter(Treatment == "Control")
 fit <- glm(log(girth) ~ log(length), family = gaussian(link = "identity"), data = grth)
 summary(fit)
 girth_se <- sigma(fit) # se of girth
@@ -310,7 +330,7 @@ for(i in 1:length(pred_df$pred)) {
 sel_grth <- as.data.frame(sel_grth)
 names(sel_grth) <- levels(bio$Treatment)
 sel_grth <- sel_grth %>% mutate(length = pred_df$length)
-sel_grth <- data.table::melt(data = sel_grth, id.vars = "length", variable.name = "Treatment", value.name = "p")
+sel_grth <- reshape2::melt(data = sel_grth, id.vars = "length", variable.name = "Treatment", value.name = "p")
 
 write_csv(sel_grth, paste0("output/theoretical_slx_fishery_", YEAR, ".csv"))
 
@@ -318,7 +338,7 @@ full_sel <- sel %>%
   mutate(Source = "Survey (May/Jun)") %>% 
   bind_rows(sel_grth %>% 
               mutate(Source = "Fishery (Sep/Oct)")) %>% 
-  # filter(Treatment != "Control") %>% 
+  # filter(Treatment != "Control") %>%
   droplevels() %>% 
   mutate(Source = factor(Source, levels = c("Survey (May/Jun)", "Fishery (Sep/Oct)"), ordered = TRUE))
 
@@ -425,7 +445,7 @@ for(i in 1:length(pred_df$pred)) {
 sel <- rbind(as.data.frame(sel[,,1]), as.data.frame(sel[,,2]))
 names(sel) <- c(levels(bio$Treatment)[2:4], "soak_time")
 sel <- sel %>% mutate(length = rep(pred_df$length, length(soak_times)))
-sel <- data.table::melt(data = sel, id.vars = c("soak_time", "length"), variable.name = "Treatment", value.name = "p")
+sel <- reshape2::melt(data = sel, id.vars = c("soak_time", "length"), variable.name = "Treatment", value.name = "p")
 
 # Fish below a certain size can fit through the mesh. Adjust selectivity
 # obtained from including soak times accordingly
