@@ -116,6 +116,7 @@ prior_100 <- filter(sprior, p == 1 & Treatment != "Control") %>%
          length_bin = cut(length2, breaks = seq(50.9, 79.9, 1), 
                           labels = paste(seq(51, 79, 1)))) %>% 
   select(-length2)
+prior_100 # lengths at 100% retention in theoretical curves
 
 prior_0 <- filter(sprior, p < 0.01 & Treatment != "Control") %>% 
   group_by(Treatment) %>% 
@@ -126,7 +127,9 @@ prior_0 <- filter(sprior, p < 0.01 & Treatment != "Control") %>%
          length_bin = cut(length2, breaks = seq(50.9, 79.9, 1), 
                           labels = paste(seq(51, 79, 1)))) %>% 
   select(-length2)
+prior_0 # lengths at 0% retention in theoretical curves
 
+# Index for length bins in TMB
 tmb_index <- data.frame(length_bin = sort(unique(df$length_bin)),
                         index = 0:(length(sort(unique(df$length_bin)))-1))
 
@@ -134,15 +137,15 @@ len <- sort(unique(df$length_bin))
 fit_len <- seq(10, 100, 1)
 
 # TMB index for s0 and s100 prior length (TMB indexing starts with 0)
-s0_index <- prior_0 %>% 
+prior_0 <-  prior_0 %>% 
   mutate(length_bin = as.numeric(as.character(length_bin))) %>% 
-  left_join(tmb_index) %>% 
-  pull(index)
-# s100_index <- c(20, 24, 27) # not sure where these numbers came from
-s100_index <- prior_100 %>% 
+  left_join(tmb_index)
+s0_index <- prior_0 %>% pull(index)
+
+prior_100 <- prior_100 %>% 
   mutate(length_bin = as.numeric(as.character(length_bin))) %>% 
-  left_join(tmb_index) %>% 
-  pull(index)
+  left_join(tmb_index) 
+s100_index <- prior_100 %>% pull(index)
 
 # Get starting values from theoretical selectivity curves
 s50_vec <- vector(length = 3)
@@ -308,7 +311,6 @@ AICtable
 # Mod 2a and 2b are the same by AIC, use one that has lowest nll
 Mod2a_nll; Mod2b_nll
 
-
 # MCMC ----
 
 library(tmbstan)
@@ -322,7 +324,8 @@ init.fn <- function(){
        log_delta = log(rnorm(1, 1, 0.1)),
        nu = rnorm(length(unique(df$effort_no))))}
 
-fit <- tmbstan(obj, seed = 1, chains = 3, iter = 10000, 
+fit <- tmbstan(obj, seed = 1, chains = 3, 
+               iter = 10000,
                warmup = 2000, thin = 10,
                open_progress = FALSE, 
                init = init.fn, lower = lb, upper = ub)
@@ -377,7 +380,7 @@ for(i in 1:nrow(post)){
 slx <- as.data.frame(do.call(rbind, slx))
 names(slx) <- c(paste(unique(df$Treatment)), "iter", "length_bin")
 slx <- slx %>% 
-  melt(id.vars = c("iter", "length_bin"), variable.name = "Treatment", value.name = "slx") %>% 
+  pivot_longer(-c(iter, length_bin), names_to = "Treatment", values_to = "slx") %>% 
   group_by(Treatment, length_bin) %>% 
   summarize(mean = mean(slx),
             median = median(slx),
@@ -387,7 +390,7 @@ slx <- slx %>%
 phi <- as.data.frame(do.call(rbind, phi))
 names(phi) <- c(paste(unique(df$Treatment)), "iter", "length_bin")
 phi <- phi %>% 
-  melt(id.vars = c("iter", "length_bin"), variable.name = "Treatment", value.name = "phi") %>% 
+  pivot_longer(-c(iter, length_bin), names_to = "Treatment", values_to = "phi") %>% 
   group_by(Treatment, length_bin) %>% 
   summarize(mean = mean(phi),
             median = median(phi),
@@ -420,6 +423,10 @@ slx %>%
                          ordered = TRUE)) -> slx
 
 slx %>% filter(length_bin == 63)
+slx %>% 
+  filter(q025 > 0.99 & Method == "SELECT") %>% 
+  group_by(Treatment) %>% 
+  filter(length_bin == min(length_bin))
 
 # Selectivity
 p_slx <- ggplot() +
@@ -480,7 +487,6 @@ p
 ggsave(filename = "../figures/phi_resids.pdf", plot = p, dpi = 600, 
        device = "pdf", units = "mm", height = 180, width = 180)
 
-
 # Generalized curves -----
 
 # Regress s50 and k estimates on escape ring diameter to develop generalized
@@ -513,8 +519,8 @@ p_gen <- as.data.frame(p_gen)
 names(p_gen) <- paste(ring_vec, "cm")
 p_gen <- p_gen %>% 
   mutate(length_bin = fit_len) %>% 
-  melt(id.vars = "length_bin", variable.name = "Escape ring", value.name = "p")
-
+  pivot_longer(-length_bin, names_to = "Escape ring", values_to = "p")
+  
 p <- ggplot(p_gen, aes(x = length_bin, y = p, col = `Escape ring`, group = `Escape ring`)) +
   geom_line() +
   scale_color_grey() +
@@ -526,3 +532,49 @@ p <- ggplot(p_gen, aes(x = length_bin, y = p, col = `Escape ring`, group = `Esca
 p
 ggsave(filename = "../figures/gen_slx.pdf", plot = p, device = "pdf",
        dpi = 600, units = "mm", width = 80, height = 80/1.618)
+
+# Evaluation of beta priors ----
+
+prior_0 
+prior_100
+
+# Comparison of priors and posterior samples on 0 and 100% retention probs
+
+post_priors <- list()
+
+for(i in 1:nrow(post)){
+  r <- obj$report(post[i,-ncol(post)])
+  # Extract selectivity probability (proportion retained) at each of the mean
+  # prior lengths
+  post_priors[[i]] <- tibble(cbind(r$fit_slx, rep(i, nrow(r$fit_slx)), tmb_index)) %>% 
+    filter(index %in% s0_index) %>% 
+    mutate(prior = "0") %>% 
+    bind_rows(tibble(cbind(r$fit_slx, rep(i, nrow(r$fit_slx)), tmb_index)) %>% 
+                filter(index %in% s100_index) %>% 
+                mutate(prior = "1")
+    )
+  }
+
+post_priors <- as.data.frame(do.call(rbind, post_priors))
+names(post_priors) <- c(paste(unique(df$Treatment)), "iter", "length_bin", "index", "prior")
+post_priors <- post_priors %>% 
+  pivot_longer(-c(iter, length_bin, index, prior), names_to = "Treatment", values_to = "p")# %>% 
+
+prior_lkup <- prior_0 %>% 
+  mutate(prior = "0") %>% 
+  bind_rows(prior_100 %>% 
+              mutate(prior = "1")) %>% 
+  mutate(id = paste(Treatment, length_bin, prior, sep = "_")) 
+
+post_priors <- post_priors %>% 
+  mutate(id = paste(Treatment, length_bin, prior, sep = "_")) %>% 
+  filter(id %in% prior_lkup$id)
+
+ggplot() +
+  geom_histogram(data = post_priors, aes(x = p, col = prior, fill = prior),
+                 stat = "density") +
+  facet_wrap(~Treatment) +
+  geom_line(data = bind_rows(prior(a = s0_alpha, b = s0_beta, label = "0"),
+                             prior(a = s100_alpha, b = s100_beta, label = "1")) %>% 
+              rename(prior = label),
+            aes(x, y, col = prior, linetype = prior))
