@@ -366,6 +366,34 @@ write_csv(as.data.frame(post), "../output/posterior_samples.csv")
 pars_sum <- summary(fit)$summary
 write_csv(as.data.frame(pars_sum), "../output/param_summary.csv")
 
+# pars_sum <- read_csv("output/param_summary.csv")
+pars_latex <- pars_sum %>% 
+  as_tibble() %>% 
+  # WARNING! You have to manually remove the extra \ in the symbols... boo
+  mutate(Parameter = c("s50, 8.9 cm",
+                       "s50, 9.5 cm",
+                       "s50, 10.2 cm",
+                       "k, 8.9 cm",
+                       "k, 9.5 cm",
+                       "k, 10.2 cm",
+                       "delta",
+                       "Set 1", "Set 2", "Set 3", "Set 4", "Set 5",
+                       "Set 6", "Set 7", "Set 8", "Set 9", "Set 10",
+                       "Set 11", "Set 12", "Set 13", "Set 14", "Set 15",
+                       "Set 16", "Set 17", "Delete")) %>% 
+  select(Parameter, lci = `2.5%`, median = `50%`, uci = `97.5%`) %>%
+  filter(Parameter != "Delete")
+
+pars_latex %>% 
+  filter(!grepl("k|Set|delta", Parameter)) %>% 
+  mutate_at(.funs = list(~formatC(., digits = 1, format = "f")), .vars = 2:4) %>% 
+  bind_rows(pars_latex %>% 
+              filter(grepl("k|Set|delta", Parameter)) %>% 
+              mutate_at(.funs = list(~formatC(., digits = 2, format = "f")), .vars = 2:4)) %>% 
+  mutate(median = paste0(median, " (", lci, ", ", uci, ")")) %>% 
+  select(Parameter, median) %>% 
+  as.matrix()
+
 # Posterior for derived quantities slx and phi. The last column in post is the
 # log-posterior density (lp__) and needs to be dropped via -ncol(post)
 slx <- list()
