@@ -46,17 +46,19 @@ counts <- read_csv(paste0("data/total_counts_", YEAR, ".csv")) %>%
 p <- bio %>% 
   filter(!is.na(Treatment) & between(length, 40, 90)) %>%
   droplevels() %>%
-  ggplot(aes(x = length, colour = Treatment, linetype = Treatment)) + 
+  ggplot(aes(x = length, colour = Treatment)) + 
   geom_freqpoly() +
   scale_colour_manual(values = c("grey90", "grey70", "grey40", "black")) +
-  scale_linetype_manual(values = c(1, 2, 3, 4)) +
+  # scale_linetype_manual(values = c(1, 2, 3, 4)) +
+  scale_y_continuous(expand=c(0,0)) +
   xlim(40, 90) +
   labs(x = "Fork length (cm)", y = "Count") + 
-  theme(legend.position = c(0.8, 0.65))
-
+  theme(legend.position = c(0.85, 0.8))
 p
 # Caption: Length frequency distribution by escape ring treatment.
-ggsave(plot = p, filename = paste0("figures/size_freq_", YEAR, ".pdf"), dpi=600, height=80/1.618, width=80, units="mm")
+# ggsave(plot = p, filename = paste0("figures/size_freq_", YEAR, ".pdf"), dpi=600, height=80/1.618, width=80, units="mm")
+ggsave(plot = p, filename = paste0("figures/size_freq_", YEAR, ".png"), dpi=300, height=4, width=7, units="in")
+
 
 # Girth outliers  ----
 
@@ -213,21 +215,24 @@ comb_grth <- comb_grth %>% mutate(Source = factor(Source, levels = c("Survey (Ma
 p1 <- ggplot() +
   geom_ribbon(data = pred, aes(x = length, ymin = lower, ymax = upper, fill = Source), 
               alpha = 0.3) +
-  geom_point(data = comb_grth, aes(x = length, y = girth, colour = Source, shape = Source), size = 0.8, alpha = 0.7) +
-  geom_line(data = pred, aes(x = length, y = fitted, group = Source, colour = Source, linetype = Source)) +
+  geom_point(data = comb_grth, aes(x = length, y = girth, colour = Source, shape = Source),alpha = 0.7) +
+  geom_line(data = pred, aes(x = length, y = fitted, group = Source, colour = Source, linetype = Source), size = 0.8) +
   scale_colour_manual(values = c("grey10", "grey60")) +
   scale_fill_manual(values = c("grey80", "grey70")) +
   labs(x = "Fork length (cm)", y = "Girth (mm)") +
-  theme(legend.position = c(0.75, 0.2)) +
+  theme(legend.position = c(0.85, .2)) +
   annotate('text', x = 45, y = 650,
            label = as.character(expression(paste(R^{2}==0.91, ",  ", sigma==0.06))),
-           parse = TRUE, size = 2.5, hjust = 0) +
+           # parse = TRUE, size = 2.5, hjust = 0) +
+           parse = TRUE, size = 4, hjust = 0) +
   annotate('text', x = 45, y = 620,
            label = as.character(expression(paste("May/Jun:  ", italic(hat(G))==4.54*italic(L)^{0.99}))),
-           parse = TRUE, size = 2.5, hjust = 0) +
+           # parse = TRUE, size = 2.5, hjust = 0) +
+           parse = TRUE, size = 4, hjust = 0) +
   annotate('text', x = 45, y = 590,
            label = as.character(expression(paste("Sep/Oct:  ", italic(hat(G))==4.54*italic(L)^{1.03}))),
-           parse = TRUE, col = "grey50", size = 2.5, hjust = 0)
+           # parse = TRUE, col = "grey50", size = 2.5, hjust = 0)
+           parse = TRUE, col = "grey50", size = 4, hjust = 0)
   
 p1
 
@@ -372,7 +377,47 @@ p2
 p3 <- plot_grid(p1, p2, ncol = 2, labels = c("A", "B"))
 p3
 ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".pdf"),
-       dpi=600, height=90, width=180, units="mm")
+       dpi=600, height=90, width=180, units="mm")p2 <- ggplot(full_sel, aes(x = length, y = p, col = Source, 
+                                                                            linetype = Treatment, group = interaction(Source, Treatment))) +
+  # geom_hline(yintercept = 0.5, col = "lightgrey", size = 0.4, lty = 2) +
+  geom_vline(xintercept = 63, col = "grey85", size = 0.2, lty = 5) +
+  geom_line() +
+  scale_colour_manual(values = c("grey10", "grey60")) +
+  scale_linetype_manual(values = c(1, 2, 3, 4)) +
+  labs(x = "Fork length (cm)", y = "Proportion retained") +
+  theme(legend.position = c(0.79, 0.3),
+        # legend.text=element_text(size = 7),
+        legend.spacing.y = unit(0, "cm")) +
+  # annotate("curve", x = 50, y = 0.85, xend = 62.5, yend = 1,
+  #          colour = "grey70", curvature = -0.3, arrow = arrow(length = unit(1, "mm"))) +
+  # annotate("text", x = 50, y = 0.8, colour = "grey60", size = 3,
+  #          label = as.character(expression(paste(italic(L)[50]== "63 cm"))), parse = TRUE) +
+  xlim(c(40,85))
+
+# alt fig
+library(ggthemes)
+p2 <- ggplot(full_sel, aes(x = length, y = p, col = Treatment, 
+                           linetype = Source, group = interaction(Treatment, Source))) +
+  geom_vline(xintercept = 63, col = "grey70", lty = 3, size = 1) +
+  geom_line(size = 0.8) +
+  scale_color_colorblind() +
+  scale_linetype_manual(values = c(1,2)) +
+  labs(x = "Fork length (cm)", y = "Proportion retained") +
+  theme(legend.position = c(0.8, 0.22),
+        legend.key.width=unit(1,"cm")) +
+  xlim(c(40,85)) +
+  scale_y_continuous(expand=c(0,0))
+p2
+p3 <- plot_grid(p1 +
+                  theme(legend.position = c(0.8, 0.1),
+                        legend.key.width=unit(1,"cm")) + 
+                  # geom_line(size = 0.8) +
+                  scale_linetype_manual(values = c(1,2)), 
+                p2, ncol = 2, labels = c("A", "B"))
+p3
+ggsave(plot = p3, filename = paste0("figures/girth_regression_theoretical_slx_", YEAR, ".png"),
+       dpi=300, height=5, width=11, units="in")
+
 
 # Theoretical w/ soak time ----
 

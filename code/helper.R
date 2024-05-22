@@ -10,10 +10,10 @@ if(!require("mosaic"))   install.packages("mosaic") # derivedFactor, derivedVari
 if(!require("tidyverse"))   install.packages("tidyverse") # dplyr, ggplot, etc.
 if(!require("lubridate"))   install.packages("lubridate") # dates functions like yday, dmy/mdy
 if(!require("data.table"))   install.packages("data.table") # dcast, foverlaps
-if(!require("ROracle"))   install.packages("ROracle") # database access through R
+# if(!require("ROracle"))   install.packages("ROracle") # database access through R
 if(!require("knitr"))   install.packages("knitr") # r markdown
 if(!require("cowplot"))   install.packages("cowplot") # plot_grid and so much else
-if(!require("captioner"))   install.packages("captioner") #numbering, ordering, & creating captions for tables and figures
+# if(!require("captioner"))   install.packages("captioner") #numbering, ordering, & creating captions for tables and figures
 if(!require("ggpubr"))   install.packages("ggpubr") # QQ plots
 if(!require("ciTools"))   install.packages("ciTools") # GLM prediction intervals
 if(!require("FSA"))   install.packages("FSA") # Dunn tests
@@ -25,9 +25,9 @@ if(!require("xtable"))   install.packages("xtable") # generate latex tables
 
 windowsFonts(Times=windowsFont("Helvetica"))
 
-theme_sleek <- function(base_size = 7, base_family = "Helvetica") {
+theme_sleek <- function(base_size = 13, base_family = "Helvetica") {
   half_line <- base_size/2
-  theme_light(base_size = 7, base_family = "Helvetica") +
+  theme_light(base_size = 13, base_family = "Helvetica") +
     theme(
       panel.grid.major = element_blank(),
       panel.grid.minor = element_blank(),
@@ -37,10 +37,10 @@ theme_sleek <- function(base_size = 7, base_family = "Helvetica") {
       strip.text.y = element_text(colour = "black"),
       #axis.text = element_text(colour = "grey30"),
       #axis.title = element_text(colour = "grey30"),
-      legend.title = element_text(size = rel(0.9)),
+      # legend.title = element_text(size = rel(0.9)),
       panel.border = element_rect(fill = NA),#, colour = "grey70", size = 1),
       legend.key.size = unit(0.9, "lines"),
-      legend.text = element_text(size = 6),
+      # legend.text = element_text(size = 11),
       legend.key.height = unit(0.6, 'line'),
       # legend.spacing.y = unit(0, "cm"),
       # legend.text = element_text(size = rel(0.7)),#, colour = "grey30"),
@@ -79,98 +79,98 @@ tickr <- function(
 #to period) - these fxns are used for autonumbering figs and tables in text and
 #creating captions.
 
-captioner <- function (prefix = "Figure", auto_space = TRUE, levels = 1, 
-                       type = NULL, infix = ".") {
-  check_class(prefix, "character")
-  check_class(auto_space, "logical")
-  check_class(levels, "numeric")
-  check_class(infix, "character")
-  if (is.null(type)) {
-    type <- c(rep("n", times = levels))
-  }
-  else if (length(type) < levels) {
-    type[(length(type) + 1):levels] <- "n"
-  }
-  else if (length(type) > levels) {
-    type <- type[1:levels]
-  }
-  if (!all(type %in% c("n", "c", "C"))) {
-    stop("Invalid 'type' value used.  Expecting 'n', 'c', or 'C'.")
-  }
-  if (auto_space) {
-    prefix <- paste(prefix, " ")
-  }
-  force(levels)
-  force(prefix)
-  force(infix)
-  OBJECTS <- list(name = NULL, caption = NULL, number = list(list()))
-  OBJECTS$number[[1]][which(type == "n")] <- 1
-  OBJECTS$number[[1]][which(type == "c")] <- "a"
-  OBJECTS$number[[1]][which(type == "C")] <- "A"
-  function(name, caption = "", display = "full", level = FALSE, 
-           cite = FALSE, num = FALSE) {
-    if (level > levels) {
-      stop("Level too large.")
-    }
-    objects <- OBJECTS
-    if (any(objects$name == name)) {
-      obj_ind <- match(name, objects$name)
-      if (objects$caption[obj_ind] == "") {
-        objects$caption[obj_ind] <- caption
-      }
-      else {
-        caption <- objects$caption[obj_ind]
-      }
-    }
-    else {
-      obj_ind <- length(objects$name) + 1
-      if (length(objects$number) == length(objects$name)) {
-        if (level) {
-          objects$number[[obj_ind]] <- increment(objects$number[[obj_ind - 
-                                                                   1]], level)
-        }
-        else {
-          objects$number[[obj_ind]] <- increment(objects$number[[obj_ind - 
-                                                                   1]], levels)
-        }
-      }
-      objects$name[obj_ind] <- name
-      objects$caption[obj_ind] <- caption
-    }
-    assign("OBJECTS", objects, envir = parent.env(environment()))
-    obj_num <- paste(objects$number[[obj_ind]], collapse = infix)
-    if (cite) {
-      .Deprecated(new = "display", old = "cite")
-      return(paste0(prefix, obj_num))
-    }
-    if (num) {
-      .Deprecated(new = "display", old = "num")
-      return(obj_num)
-    }
-    if (display == FALSE) {
-      return(invisible())
-    }
-    #FLAG: Jane changed ": " to ". "
-    else if (display == "full" || display == "f") {
-      return(paste0(prefix, obj_num, ". ", caption))
-    }
-    else if (display == "cite" || display == "c") {
-      return(paste0(prefix, obj_num))
-    }
-    else if (display == "num" || display == "n") {
-      return(obj_num)
-    }
-    else {
-      warning("Invalid display mode used.  Caption was still saved.")
-      return(invisible())
-    }
-  }
-}
+# captioner <- function (prefix = "Figure", auto_space = TRUE, levels = 1, 
+                       # type = NULL, infix = ".") {
+#   check_class(prefix, "character")
+#   check_class(auto_space, "logical")
+#   check_class(levels, "numeric")
+#   check_class(infix, "character")
+#   if (is.null(type)) {
+#     type <- c(rep("n", times = levels))
+#   }
+#   else if (length(type) < levels) {
+#     type[(length(type) + 1):levels] <- "n"
+#   }
+#   else if (length(type) > levels) {
+#     type <- type[1:levels]
+#   }
+#   if (!all(type %in% c("n", "c", "C"))) {
+#     stop("Invalid 'type' value used.  Expecting 'n', 'c', or 'C'.")
+#   }
+#   if (auto_space) {
+#     prefix <- paste(prefix, " ")
+#   }
+#   force(levels)
+#   force(prefix)
+#   force(infix)
+#   OBJECTS <- list(name = NULL, caption = NULL, number = list(list()))
+#   OBJECTS$number[[1]][which(type == "n")] <- 1
+#   OBJECTS$number[[1]][which(type == "c")] <- "a"
+#   OBJECTS$number[[1]][which(type == "C")] <- "A"
+#   function(name, caption = "", display = "full", level = FALSE, 
+#            cite = FALSE, num = FALSE) {
+#     if (level > levels) {
+#       stop("Level too large.")
+#     }
+#     objects <- OBJECTS
+#     if (any(objects$name == name)) {
+#       obj_ind <- match(name, objects$name)
+#       if (objects$caption[obj_ind] == "") {
+#         objects$caption[obj_ind] <- caption
+#       }
+#       else {
+#         caption <- objects$caption[obj_ind]
+#       }
+#     }
+#     else {
+#       obj_ind <- length(objects$name) + 1
+#       if (length(objects$number) == length(objects$name)) {
+#         if (level) {
+#           objects$number[[obj_ind]] <- increment(objects$number[[obj_ind - 
+#                                                                    1]], level)
+#         }
+#         else {
+#           objects$number[[obj_ind]] <- increment(objects$number[[obj_ind - 
+#                                                                    1]], levels)
+#         }
+#       }
+#       objects$name[obj_ind] <- name
+#       objects$caption[obj_ind] <- caption
+#     }
+#     assign("OBJECTS", objects, envir = parent.env(environment()))
+#     obj_num <- paste(objects$number[[obj_ind]], collapse = infix)
+#     if (cite) {
+#       .Deprecated(new = "display", old = "cite")
+#       return(paste0(prefix, obj_num))
+#     }
+#     if (num) {
+#       .Deprecated(new = "display", old = "num")
+#       return(obj_num)
+#     }
+#     if (display == FALSE) {
+#       return(invisible())
+#     }
+#     #FLAG: Jane changed ": " to ". "
+#     else if (display == "full" || display == "f") {
+#       return(paste0(prefix, obj_num, ". ", caption))
+#     }
+#     else if (display == "cite" || display == "c") {
+#       return(paste0(prefix, obj_num))
+#     }
+#     else if (display == "num" || display == "n") {
+#       return(obj_num)
+#     }
+#     else {
+#       warning("Invalid display mode used.  Caption was still saved.")
+#       return(invisible())
+#     }
+#   }
+# }
 
-fig <- captioner(prefix = "Figure")
-tbl <- captioner(prefix = "Table")
-appendix_tbl <- captioner(prefix = "Table") #Numbers tables in the appendix
-appendix_fig <- captioner(prefix = "Figure") #Numbers figures in the appendix
+# fig <- captioner(prefix = "Figure")
+# tbl <- captioner(prefix = "Table")
+# appendix_tbl <- captioner(prefix = "Table") #Numbers tables in the appendix
+# appendix_fig <- captioner(prefix = "Figure") #Numbers figures in the appendix
 
 #
 # Calculate marginal AIC for a fitted model
